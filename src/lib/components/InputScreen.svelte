@@ -1,12 +1,14 @@
 <script lang="ts">
-	import { Loader2, Mic, Trash2, Clock, ChevronRight } from '@lucide/svelte';
+	import { Loader2, Mic, Monitor, Trash2, Clock, ChevronRight } from '@lucide/svelte';
+	import type { AudioSource } from '$lib/live-audio';
 	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
-	import { DEFAULT_AI_MODEL, getAIModel, STT_PROVIDERS } from '$lib/constants';
+	import { DEFAULT_AI_MODEL, getAIModel } from '$lib/constants';
+	import { DEFAULT_SPEECH_LANGUAGE, DEFAULT_STT_PROVIDER, speechLanguageError, type SpeechLanguage } from '$shared/speech-settings';
+	import SpeechSettings from '$lib/components/SpeechSettings.svelte';
 	import ModelSelect from '$lib/components/ModelSelect.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Textarea from '$lib/components/ui/Textarea.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
 	import { timeAgo } from '$lib/utils';
 	import { readTranscriptFile, TRANSCRIPT_ACCEPT } from '$lib/transcript-upload';
 
@@ -25,7 +27,7 @@
 		progress?: { processed: number; total: number } | null;
 		savedMeetings?: Meeting[];
 		onSubmit: (transcript: string, provider: AIProvider, model: string) => void;
-		onStartLive: (provider: STTProvider) => void;
+		onStartLive: (provider: STTProvider, source: AudioSource, language: SpeechLanguage) => void;
 		onOpen: (m: Meeting) => void;
 		onDelete: (id: string) => void;
 	} = $props();
@@ -57,7 +59,9 @@
 	}
 	let selectedModelId = $state(DEFAULT_AI_MODEL.id);
 	const selectedModel = $derived(getAIModel(selectedModelId));
-	let sttProvider = $state<STTProvider>('deepgram');
+	let sttProvider = $state<STTProvider>(DEFAULT_STT_PROVIDER);
+	let speechLanguage = $state<SpeechLanguage>(DEFAULT_SPEECH_LANGUAGE);
+	const liveDisabled = $derived(inputDisabled || !!speechLanguageError(sttProvider, speechLanguage));
 
 	function handleSubmit() {
 		if (inputDisabled || !transcript.trim()) return;
@@ -69,9 +73,7 @@
 		return `${n} topic${n !== 1 ? 's' : ''}`;
 	}
 
-	const sttOptions = STT_PROVIDERS.map((p) => ({ value: p.value, label: p.label }));
-
-	const hasMeetings = savedMeetings.length > 0;
+	const hasMeetings = $derived(savedMeetings.length > 0);
 </script>
 
 <div class="min-h-screen px-4 py-12">
@@ -144,15 +146,18 @@
 							<div class="flex-1 border-t border-zinc-200"></div>
 						</div>
 
-						<div class="flex items-center gap-2">
-							<span class="shrink-0 text-xs text-zinc-500">Speech-to-Text:</span>
-							<Select bind:value={sttProvider} options={sttOptions} disabled={isLoading} class="flex-1" />
-						</div>
+						<SpeechSettings idPrefix="meeting-speech" bind:provider={sttProvider} bind:language={speechLanguage} disabled={inputDisabled} />
 
-						<Button variant="outline" size="lg" class="w-full" onclick={() => onStartLive(sttProvider)} disabled={inputDisabled}>
-							<Mic class="h-5 w-5" />
-							Start Live Meeting
-						</Button>
+						<div class="space-y-2">
+							<h3 class="text-sm font-medium">Start a live meeting</h3>
+							<Button variant="outline" size="lg" class="w-full" onclick={() => onStartLive(sttProvider, 'microphone', speechLanguage)} disabled={liveDisabled}>
+								<Mic class="h-5 w-5" /> Use microphone
+							</Button>
+							<Button variant="outline" size="lg" class="w-full" onclick={() => onStartLive(sttProvider, 'tab', speechLanguage)} disabled={liveDisabled}>
+								<Monitor class="h-5 w-5" /> Share browser tab audio
+							</Button>
+							<p class="text-xs leading-relaxed text-zinc-500">Choose your source, then start capture on the next screen. For tab audio, use desktop Chrome or Edge and enable <strong>Share tab audio</strong> in the browser picker.</p>
+						</div>
 					</div>
 				</Card>
 			</div>

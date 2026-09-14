@@ -11,11 +11,15 @@
 		analyzeMeeting
 	} from '$lib/api';
 	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
+	import type { AudioSource } from '$lib/live-audio';
+	import { DEFAULT_SPEECH_LANGUAGE, DEFAULT_STT_PROVIDER, type SpeechLanguage } from '$shared/speech-settings';
 
 	type View = 'input' | 'live' | 'canvas';
 
 	let view = $state<View>('input');
-	let liveSTTProvider = $state<STTProvider>('deepgram');
+	let liveSTTProvider = $state<STTProvider>(DEFAULT_STT_PROVIDER);
+	let liveSpeechLanguage = $state<SpeechLanguage>(DEFAULT_SPEECH_LANGUAGE);
+	let liveAudioSource = $state<AudioSource>('microphone');
 	let meetings = $state<Meeting[]>([]);
 	let currentMeeting = $state<Meeting | null>(null);
 	let currentTranscript = $state('');
@@ -83,7 +87,7 @@
 </script>
 
 {#if view === 'live'}
-	<LiveMeetingView bind:sttProvider={liveSTTProvider} onEnd={handleLiveEnd} />
+	<LiveMeetingView bind:sttProvider={liveSTTProvider} bind:audioSource={liveAudioSource} bind:speechLanguage={liveSpeechLanguage} onEnd={handleLiveEnd} />
 {:else if view === 'canvas' && currentMeeting}
 	<CanvasView meeting={currentMeeting} transcript={currentTranscript} onBack={() => { currentMeeting = null; view = 'input'; loadMeetings(); }} />
 {:else}
@@ -93,7 +97,7 @@
 		{progress}
 		savedMeetings={meetings}
 		onSubmit={handleSubmit}
-		onStartLive={(provider) => { liveSTTProvider = provider; view = 'live'; }}
+		onStartLive={(provider, source, language) => { liveSTTProvider = provider; liveAudioSource = source; liveSpeechLanguage = language; view = 'live'; }}
 		onOpen={handleOpen}
 		onDelete={handleDelete}
 	/>

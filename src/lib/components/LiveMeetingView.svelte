@@ -6,16 +6,20 @@
 	import { createProgressiveMap } from '$lib/progressive-map';
 	import { readLiveDraft, saveLiveDraft, clearLiveDraft, persistLiveSegment, type LiveSegment, type LiveDraft } from '$lib/live-session';
 	import type { Meeting, MeetingMap, STTProvider } from '$shared/types';
-	import { DEFAULT_AI_MODEL, getAIModel, STT_PROVIDERS } from '$lib/constants';
+	import { DEFAULT_AI_MODEL, getAIModel } from '$lib/constants';
+	import { DEFAULT_SPEECH_LANGUAGE, DEFAULT_STT_PROVIDER, LIVE_AUDIO_CHUNK_MS, SPEECH_LANGUAGES, speechLanguageError, type SpeechLanguage } from '$shared/speech-settings';
+	import SpeechSettings from './SpeechSettings.svelte';
 	import ModelSelect from './ModelSelect.svelte';
 	import FlowCanvas from './FlowCanvas.svelte';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';
 	import Select from './ui/Select.svelte';
 
-	let { onEnd, sttProvider = $bindable<STTProvider>('deepgram') }: {
+	let { onEnd, sttProvider = $bindable<STTProvider>(DEFAULT_STT_PROVIDER), speechLanguage = $bindable<SpeechLanguage>(DEFAULT_SPEECH_LANGUAGE), audioSource = $bindable<AudioSource>('microphone') }: {
 		onEnd: (meeting: Meeting | null, error?: string, transcript?: string) => void;
 		sttProvider?: STTProvider;
+		speechLanguage?: SpeechLanguage;
+		audioSource?: AudioSource;
 	} = $props();
 
 	let selectedModelId = $state(DEFAULT_AI_MODEL.id);
@@ -23,7 +27,6 @@
 	let meetingId = $state<string | null>(null);
 	let recording = $state(false);
 	let starting = $state(false);
-	let audioSource = $state<AudioSource>('microphone');
 	let finishing = $state(false);
 	let capture: AudioRecording | null = null;
 	let sourceStream: MediaStream | null = null;
@@ -46,7 +49,6 @@
 	let followTranscript = $state(true);
 	const transcript = $derived(segments.map((segment) => segment.text).join('\n'));
 	const unsaved = $derived(segments.filter((segment) => !segment.saved).length);
-	const sttOptions = STT_PROVIDERS.map((provider) => ({ value: provider.value, label: provider.label }));
 	const sourceOptions = [{ value: 'microphone', label: 'Microphone' }, { value: 'tab', label: 'Browser tab audio' }];
 
 	onMount(() => {
@@ -116,6 +118,8 @@
 	}
 	async function start() {
 		if (starting || recovery) return;
+		const languageError = speechLanguageError(sttProvider, speechLanguage);
+		if (languageError) { error = languageError; return; }
 		starting = true;
 		error = '';
 		status = audioSource === 'tab' ? 'Choose a tab and enable Share tab audio...' : 'Requesting microphone access...';
@@ -124,6 +128,7 @@
 			if (disposed) { stopMediaStream(stream); return; }
 			sourceStream = stream;
 			const provider = sttProvider;
+			const language = speechLanguage;
 			const res = await createMeeting({ transcript: '', provider: selectedModel.provider, model: selectedModel.model });
 			if (disposed) { stopMediaStream(stream); return; }
 			if (stream.getTracks().some((track) => track.readyState === 'ended')) throw new Error('Audio sharing ended before recording started. Please try again.');
@@ -132,7 +137,7 @@
 			cacheDraft();
 			beginPreview();
 			capture = recordAudio(stream, async (blob) => {
-				const { text } = await transcribe(provider, blob);
+				const { text } = await transcribe(provider, blob, language);
 				if (disposed || !text.trim()) return;
 				// Display and back up text BEFORE attempting any D1 write.
 				segments = [...segments, { id: crypto.randomUUID(), meeting_id: res.id, segment_index: segments.length, text: text.trim(), created_at: new Date().toISOString(), saved: false }];
@@ -140,7 +145,7 @@
 				progressive?.notify();
 				try { await savePending(); error = ''; }
 				catch (err) { error = `Saving interrupted: ${err instanceof Error ? err.message : String(err)}. Recognized text remains here; saving will retry.`; }
-			}, (err) => { audioWarning = `Some audio could not be transcribed: ${err.message}. Saving or analyzing again can only recover recognized text, not missing audio.`; }, () => { void finish(); });
+			}, (err) => { audioWarning = `Some audio could not be transcribed: ${err.message}. Saving or analyzing again can only recover recognized text, not missing audio.`; }, () => { void finish(); }, LIVE_AUDIO_CHUNK_MS);
 			recording = true;
 			startedAt = Date.now();
 			clock = setInterval(() => elapsed = Math.floor((Date.now() - startedAt) / 1000), 1000);
@@ -213,9 +218,10 @@
 			<ModelSelect id="live-ai-model" bind:value={selectedModelId} disabled={starting} />
 			<Select id="live-audio-source" label="Audio source" bind:value={audioSource} options={sourceOptions} disabled={starting} />
 			{#if audioSource === 'tab'}<p class="text-xs leading-relaxed text-zinc-500">Use desktop Chrome or Edge. Choose a browser tab and enable <strong>Share tab audio</strong>. Only audio is uploaded, not video; the microphone is not mixed in. Let participants know before transcribing.</p>{/if}
-			<Select id="live-stt-provider" label="Speech-to-text model" bind:value={sttProvider} options={sttOptions} disabled={starting} />
+			<SpeechSettings idPrefix="live-speech" bind:provider={sttProvider} bind:language={speechLanguage} disabled={starting} />
+			<p class="text-xs text-zinc-500">Audio is transcribed in approximately {LIVE_AUDIO_CHUNK_MS / 1000}-second clips for more context. Text appears after each clip is processed, not word by word.</p>
 			<p class="text-xs text-zinc-500">The live transcript and conversation canvas appear side by side while recording. A recovery copy of recognized text is kept in this browser until Save & exit.</p>
-			<Button size="lg" class="w-full" onclick={start} disabled={starting || !!recovery}>
+			<Button size="lg" class="w-full" onclick={start} disabled={starting || !!recovery || !!speechLanguageError(sttProvider, speechLanguage)}>
 				{#if starting}<Loader2 class="h-5 w-5 animate-spin" /> Starting...
 				{:else if audioSource === 'tab'}<Monitor class="h-5 w-5" /> Share tab & start
 				{:else}<Mic class="h-5 w-5" /> Start recording{/if}
@@ -231,7 +237,7 @@
 				<Button variant="ghost" size="sm" onclick={leave}><ArrowLeft class="h-4 w-4" /> Back</Button>
 				<span class={recording ? 'font-semibold text-red-600' : 'text-zinc-500'}>{recording ? '● REC' : finalMeeting ? '✓ Saved' : 'Recording stopped'}</span>
 				<span class="tabular-nums">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
-				<span class="text-zinc-500">{audioSource === 'tab' ? 'Tab audio' : 'Microphone'} · {selectedModel.label}</span>
+				<span class="text-zinc-500">{audioSource === 'tab' ? 'Tab audio' : 'Microphone'} · {SPEECH_LANGUAGES.find((option) => option.value === speechLanguage)?.label} · {selectedModel.label}</span>
 			</div>
 			<div class="flex gap-2">
 				<Button variant="outline" size="sm" onclick={download} disabled={!segments.length}><Download class="h-4 w-4" /> Download transcript</Button>
