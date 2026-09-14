@@ -22,8 +22,7 @@
 		{
 			"binding": "DB",
 			"database_name": "roundtable-v2-db",
-			// Run `wrangler d1 create roundtable-v2-db` and paste the id below
-			"database_id": "<your-database-id>"
+			"database_id": "69f157d1-7712-4c54-8da2-01f47dca816d"
 		}
 	],
 	"r2_buckets": [
