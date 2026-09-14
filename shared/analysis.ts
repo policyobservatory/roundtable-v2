@@ -32,28 +32,28 @@ export async function runChunkedAnalysis(
 	provider: AIProvider,
 	model: string,
 	env: AppEnv,
-	onEvent: (event: AnalysisEvent) => void
+	onEvent: (event: AnalysisEvent) => void | Promise<void>
 ): Promise<void> {
 	const chunks = splitTranscript(transcript, env.TRANSCRIPT_CHUNK_SIZE);
 	if (chunks.length === 0) {
-		onEvent({ type: 'error', message: 'Transcript is empty' });
+		await onEvent({ type: 'error', message: 'Transcript is empty' });
 		return;
 	}
 
-	await updateMeeting(db, meetingId, { status: 'analyzing' });
+	await updateMeeting(db, meetingId, { status: 'analyzing', error: undefined });
 
 	const results: { summary: string; nodes: MeetingNode[] }[] = [];
 	let contextSummary = '';
 
 	try {
 		for (let i = 0; i < chunks.length; i++) {
-			onEvent({ type: 'progress', processed: i, total: chunks.length });
+			await onEvent({ type: 'progress', processed: i, total: chunks.length });
 			const result = await analyzeChunk(chunks[i], provider, model, env, contextSummary);
 			results.push(result);
 			contextSummary = result.summary;
 
 			await insertChunk(db, {
-				id: crypto.randomUUID(),
+				id: `${meetingId}:${i}`,
 				meeting_id: meetingId,
 				chunk_index: i,
 				start_offset: i * env.TRANSCRIPT_CHUNK_SIZE,
@@ -63,16 +63,17 @@ export async function runChunkedAnalysis(
 				created_at: new Date().toISOString()
 			});
 
-			onEvent({ type: 'chunk', chunkIndex: i, summary: result.summary, nodes: result.nodes });
+			await onEvent({ type: 'chunk', chunkIndex: i, summary: result.summary, nodes: result.nodes });
 		}
 
 		const finalMap = buildFinalMap(results);
-		await updateMeeting(db, meetingId, { status: 'completed', map: finalMap });
-		onEvent({ type: 'complete', map: finalMap });
+		await updateMeeting(db, meetingId, { status: 'completed', map: finalMap, error: undefined });
+		await onEvent({ type: 'complete', map: finalMap });
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
-		await updateMeeting(db, meetingId, { status: 'error', error: message });
-		onEvent({ type: 'error', message });
+		try { await updateMeeting(db, meetingId, { status: 'error', error: message }); }
+		catch { /* Preserve the original error if D1 is still unavailable. */ }
+		await onEvent({ type: 'error', message });
 	}
 }
 

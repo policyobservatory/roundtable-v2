@@ -5,6 +5,9 @@ export interface MeetingNode {
 	id: string;
 	title: string;
 	summary: string;
+	decisions?: string[];
+	actions?: string[];
+	concerns?: string[];
 	x?: number;
 	y?: number;
 	children?: MeetingNode[];
@@ -12,7 +15,7 @@ export interface MeetingNode {
 
 export interface MeetingMap {
 	nodes: MeetingNode[];
-	edges?: { source: string; target: string }[];
+	edges?: { source: string; target: string; label?: string }[];
 }
 
 export interface AnalysisChunk {
