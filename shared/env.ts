@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { DEFAULT_WORKERS_AI_MODEL } from './ai-defaults.ts';
 
 export const appEnvSchema = z.object({
 	// Non-secret vars
 	APP_ORIGIN: z.string().default('*'),
 	TRANSCRIPT_CHUNK_SIZE: z.coerce.number().default(6000),
-	WORKERS_AI_MODEL: z.string().default('@cf/meta/llama-3.1-8b-instruct'),
+	WORKERS_AI_MODEL: z.string().default(DEFAULT_WORKERS_AI_MODEL),
 	OPENROUTER_MODEL: z.string().default('openai/gpt-4o-mini'),
 	LLMAPI_MODEL: z.string().default('gpt-4o-mini'),
 	HF_STT_MODEL: z.string().default('openai/whisper-large-v3'),

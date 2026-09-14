@@ -19,7 +19,7 @@
 	"vars": {
 		"APP_ORIGIN": "*",
 		"TRANSCRIPT_CHUNK_SIZE": "6000",
-		"WORKERS_AI_MODEL": "@cf/meta/llama-3.1-8b-instruct",
+		"WORKERS_AI_MODEL": "@cf/zai-org/glm-5.3-flash",
 		"OPENROUTER_MODEL": "openai/gpt-4o-mini",
 		"LLMAPI_MODEL": "gpt-4o-mini",
 		"HF_STT_MODEL": "openai/whisper-large-v3",

@@ -1,4 +1,5 @@
 import type { AIProvider } from '../../shared/types';
+import { DEFAULT_WORKERS_AI_MODEL } from '../../shared/ai-defaults.ts';
 
 interface AIModelOption {
 	id: string;
@@ -11,6 +12,13 @@ interface AIModelOption {
 // Add models here to show them in every AI model dropdown.
 // Use unique IDs. The first entry is the default; configure provider credentials separately.
 export const AI_MODELS = [
+	{
+		id: 'workers-glm-5-3-flash',
+		label: 'GLM-5.3 Flash · Cloudflare',
+		provider: 'workers-ai',
+		model: DEFAULT_WORKERS_AI_MODEL,
+		description: 'The default meeting-analysis model on Cloudflare Workers AI. Requires paid access.'
+	},
 	{
 		id: 'openrouter-gpt-4o-mini',
 		label: 'GPT-4o mini · OpenRouter',

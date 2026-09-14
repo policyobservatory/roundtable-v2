@@ -115,6 +115,24 @@ test('local D1 persistence and API reliability', { timeout: 60000 }, async (t) =
 			} finally { globalThis.fetch = originalFetch; }
 		});
 
+		await t.test('new transcript analysis defaults to GLM through the AI binding, while explicit providers keep their defaults', async () => {
+			const created = await post('/api/meetings', { transcript: 'We approved the budget.' });
+			const { id: defaultId } = await created.json();
+			const meeting = await getMeeting(db, defaultId);
+			assert.equal(meeting.provider, 'workers-ai');
+			assert.equal(meeting.model, '@cf/zai-org/glm-5.3-flash');
+			const bindings = { ...env, AI: { async run(model) {
+				assert.equal(model, meeting.model);
+				return { choices: [{ message: { content: JSON.stringify({ title: 'Budget', summary: 'Approved budget', nodes: [{ id: 'budget', title: 'Budget', summary: 'Approved' }], edges: [] }) }, finish_reason: 'stop' }] };
+			} } };
+			const result = await post(`/api/meetings/${defaultId}/analyze`, {}, bindings);
+			const events = (await result.text()).trim().split('\n').map((line) => JSON.parse(line));
+			assert.equal(events.at(-1).type, 'complete');
+			assert.equal((await getMeeting(db, defaultId)).status, 'completed');
+			const explicit = await (await post('/api/meetings', { transcript: 'Notes', provider: 'openrouter' })).json();
+			assert.equal((await getMeeting(db, explicit.id)).model, 'openai/gpt-4o-mini');
+		});
+
 		await t.test('transient database failure is retryable and does not leak a stack trace', async () => {
 			const bindings = { ...env, DB: { prepare() { throw new Error('D1_ERROR: Network connection lost.'); } } };
 			const res = await app.request('/api/meetings', undefined, bindings);

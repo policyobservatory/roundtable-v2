@@ -69,8 +69,8 @@ app.post('/api/meetings', async (c) => {
 	const body = (await c.req.json()) as Record<string, unknown>;
 	const transcript = (body.transcript as string) ?? '';
 	const title = (body.title as string)?.trim() || `Meeting ${new Date().toLocaleDateString()}`;
-	const provider: AIProvider = (body.provider as AIProvider) ?? 'openrouter';
-	const model = (body.model as string) ?? env.OPENROUTER_MODEL;
+	const provider: AIProvider = (body.provider as AIProvider) ?? 'workers-ai';
+	const model = (body.model as string) ?? (provider === 'workers-ai' ? env.WORKERS_AI_MODEL : provider === 'llmapi' ? env.LLMAPI_MODEL : env.OPENROUTER_MODEL);
 	const id = crypto.randomUUID();
 	const transcriptKey = `transcripts/${id}.txt`;
 	await putTranscript(env.TRANSCRIPTS, transcriptKey, transcript);
@@ -202,8 +202,8 @@ app.post('/api/chat', async (c) => {
 	const env = await getEnv(c.env);
 	const body = (await c.req.json()) as Record<string, unknown>;
 	const messages = (body.messages as ChatMessage[]) ?? [];
-	const provider: AIProvider = (body.provider as AIProvider) ?? 'openrouter';
-	const model = (body.model as string) ?? env.OPENROUTER_MODEL;
+	const provider: AIProvider = (body.provider as AIProvider) ?? 'workers-ai';
+	const model = (body.model as string) ?? (provider === 'workers-ai' ? env.WORKERS_AI_MODEL : provider === 'llmapi' ? env.LLMAPI_MODEL : env.OPENROUTER_MODEL);
 	const meetingId = body.meeting_id as string | undefined;
 	const docQuery = body.doc_query as string | undefined;
 

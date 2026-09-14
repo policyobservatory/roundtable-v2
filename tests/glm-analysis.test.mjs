@@ -6,6 +6,10 @@ import { DEFAULT_WORKERS_AI_MODEL } from '../shared/ai-defaults.ts';
 
 const messages = [{ role: 'user', content: 'Summarize the meeting.' }];
 
+test('the Workers AI server default is Cloudflare GLM-5.3 Flash', () => {
+	assert.equal(parseEnv({}).WORKERS_AI_MODEL, '@cf/zai-org/glm-5.3-flash');
+});
+
 test('GLM transcript analysis uses the AI binding and parses final completion content without API credentials', async () => {
 	const graph = { title: 'Planning', summary: 'The budget was approved.', nodes: [{ id: 'budget', title: 'Budget', summary: 'Approved.', decisions: ['Approved'], actions: [], concerns: [] }], edges: [] };
 	const env = parseEnv({ AI: { async run(model, input) {
