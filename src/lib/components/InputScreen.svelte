@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { Loader2, Mic, Trash2, Clock, ChevronRight } from '@lucide/svelte';
 	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
-	import { AI_PROVIDERS, STT_PROVIDERS } from '$lib/constants';
+	import { DEFAULT_AI_MODEL, getAIModel, STT_PROVIDERS } from '$lib/constants';
+	import ModelSelect from '$lib/components/ModelSelect.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Textarea from '$lib/components/ui/Textarea.svelte';
@@ -54,21 +55,13 @@
 			input.value = '';
 		}
 	}
-	let aiProvider = $state<AIProvider>('openrouter');
-	let aiModel = $state('openai/gpt-4o-mini');
+	let selectedModelId = $state(DEFAULT_AI_MODEL.id);
+	const selectedModel = $derived(getAIModel(selectedModelId));
 	let sttProvider = $state<STTProvider>('deepgram');
-
-	function providerDefault(provider: AIProvider) {
-		return AI_PROVIDERS.find((p) => p.value === provider)?.defaultModel ?? '';
-	}
-
-	$effect(() => {
-		aiModel = providerDefault(aiProvider);
-	});
 
 	function handleSubmit() {
 		if (inputDisabled || !transcript.trim()) return;
-		onSubmit(transcript, aiProvider, aiModel);
+		onSubmit(transcript, selectedModel.provider, selectedModel.model);
 	}
 
 	function nodeCount(meeting: Meeting) {
@@ -76,7 +69,6 @@
 		return `${n} topic${n !== 1 ? 's' : ''}`;
 	}
 
-	const aiOptions = AI_PROVIDERS.map((p) => ({ value: p.value, label: p.label }));
 	const sttOptions = STT_PROVIDERS.map((p) => ({ value: p.value, label: p.label }));
 
 	const hasMeetings = savedMeetings.length > 0;
@@ -127,11 +119,7 @@
 
 						<Textarea bind:value={transcript} placeholder="Paste your meeting transcript here, or upload a file above..." rows={10} class="h-52 resize-y" disabled={inputDisabled} />
 
-						<div class="flex items-center gap-2">
-							<span class="shrink-0 text-xs text-zinc-500">AI Model:</span>
-							<Select bind:value={aiProvider} options={aiOptions} disabled={isLoading} class="flex-1" />
-							<input bind:value={aiModel} placeholder="model" class="h-8 w-40 rounded-md border border-zinc-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950" disabled={isLoading} />
-						</div>
+						<ModelSelect id="meeting-ai-model" bind:value={selectedModelId} disabled={inputDisabled} />
 
 						{#if error}
 							<p class="text-sm text-red-600">{error}</p>

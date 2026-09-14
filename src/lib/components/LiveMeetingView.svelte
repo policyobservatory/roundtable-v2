@@ -2,8 +2,9 @@
 	import { Mic, Square, ArrowLeft, Loader2 } from '@lucide/svelte';
 	import { createMeeting, appendSegment, analyzeMeeting } from '$lib/api';
 	import { transcribe } from '$lib/api';
-	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
-	import { AI_PROVIDERS, STT_PROVIDERS } from '$lib/constants';
+	import type { Meeting, STTProvider } from '$shared/types';
+	import { DEFAULT_AI_MODEL, getAIModel, STT_PROVIDERS } from '$lib/constants';
+	import ModelSelect from '$lib/components/ModelSelect.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
@@ -14,29 +15,37 @@
 		onEnd: (meeting: Meeting | null, error?: string) => void;
 	} = $props();
 
-	let aiProvider = $state<AIProvider>('openrouter');
-	let aiModel = $state('openai/gpt-4o-mini');
+	let selectedModelId = $state(DEFAULT_AI_MODEL.id);
+	const selectedModel = $derived(getAIModel(selectedModelId));
 	let sttProvider = $state<STTProvider>('deepgram');
 
 	let meetingId = $state<string | null>(null);
 	let recording = $state(false);
+	let starting = $state(false);
 	let recorder = $state<MediaRecorder | null>(null);
 	let segments = $state<string[]>([]);
 	let status = $state('');
 	let analyzing = $state(false);
 
-	const aiOptions = AI_PROVIDERS.map((p) => ({ value: p.value, label: p.label }));
 	const sttOptions = STT_PROVIDERS.map((p) => ({ value: p.value, label: p.label }));
 
 	async function start() {
-		const res = await createMeeting({
-			transcript: '',
-			provider: aiProvider,
-			model: aiModel
-		});
-		meetingId = res.id;
-		recording = true;
-		status = 'Recording...';
+		if (starting || recording || analyzing) return;
+		starting = true;
+		try {
+			const res = await createMeeting({
+				transcript: '',
+				provider: selectedModel.provider,
+				model: selectedModel.model
+			});
+			meetingId = res.id;
+			recording = true;
+			status = 'Recording...';
+		} catch (err: unknown) {
+			status = err instanceof Error ? err.message : String(err);
+		} finally {
+			starting = false;
+		}
 	}
 
 	async function stop() {
@@ -47,7 +56,7 @@
 			analyzing = true;
 			status = 'Analyzing...';
 			try {
-				for await (const event of analyzeMeeting(meetingId, aiProvider, aiModel)) {
+				for await (const event of analyzeMeeting(meetingId, selectedModel.provider, selectedModel.model)) {
 					if (event && typeof event === 'object' && 'type' in event) {
 						if (event.type === 'progress') status = `Analyzed ${event.processed}/${event.total}`;
 						if (event.type === 'complete') {
@@ -113,16 +122,7 @@
 
 		<Card class="p-6">
 			<div class="space-y-5">
-				<div class="grid gap-4 md:grid-cols-[1fr,1.5fr]">
-					<div>
-						<label for="live-ai-provider" class="mb-1 block text-xs font-medium text-zinc-500">AI provider</label>
-						<Select id="live-ai-provider" bind:value={aiProvider} options={aiOptions} />
-					</div>
-					<div>
-						<label for="live-ai-model" class="mb-1 block text-xs font-medium text-zinc-500">AI model</label>
-						<input id="live-ai-model" bind:value={aiModel} class="h-8 w-full rounded-md border border-zinc-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950" />
-					</div>
-				</div>
+				<ModelSelect id="live-ai-model" bind:value={selectedModelId} disabled={starting || recording || analyzing || !!meetingId} />
 
 				<div>
 					<label for="live-stt-provider" class="mb-1 block text-xs font-medium text-zinc-500">STT provider</label>
@@ -130,7 +130,7 @@
 				</div>
 
 				{#if !recording}
-					<Button size="lg" class="w-full bg-red-600 hover:bg-red-700" onclick={start}>
+					<Button size="lg" class="w-full bg-red-600 hover:bg-red-700" onclick={start} disabled={starting || analyzing}>
 						<Mic class="h-5 w-5" /> Start recording
 					</Button>
 				{:else}

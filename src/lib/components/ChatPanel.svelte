@@ -2,16 +2,16 @@
 	import { Send, Loader2 } from '@lucide/svelte';
 	import { chat } from '$lib/api';
 	import type { AIProvider } from '$shared/types';
-	import { AI_PROVIDERS } from '$lib/constants';
+	import { AI_MODELS, DEFAULT_AI_MODEL, getAIModel } from '$lib/constants';
+	import ModelSelect from '$lib/components/ModelSelect.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
 	import Textarea from '$lib/components/ui/Textarea.svelte';
 
 	let {
 		meetingId,
-		provider = $bindable<AIProvider>('openrouter'),
-		model = $bindable('openai/gpt-4o-mini')
+		provider = DEFAULT_AI_MODEL.provider,
+		model = DEFAULT_AI_MODEL.model
 	}: {
 		meetingId: string;
 		provider?: AIProvider;
@@ -22,6 +22,11 @@
 	let input = $state('');
 	let docQuery = $state('');
 	let loading = $state(false);
+	let selectedModelId = $state<string | null>(null);
+	// Older meetings may reference a model no longer offered in the dropdown.
+	const selectedModel = $derived(selectedModelId === null
+		? AI_MODELS.find((option) => option.provider === provider && option.model === model) ?? DEFAULT_AI_MODEL
+		: getAIModel(selectedModelId));
 
 	async function submit() {
 		if (!input.trim()) return;
@@ -32,8 +37,8 @@
 		try {
 			const reply = await chat({
 				messages: messages.slice(-10),
-				provider,
-				model,
+				provider: selectedModel.provider,
+				model: selectedModel.model,
 				meeting_id: meetingId,
 				doc_query: docQuery.trim() || userMsg
 			});
@@ -45,15 +50,13 @@
 		}
 	}
 
-	const aiOptions = AI_PROVIDERS.map((p) => ({ value: p.value, label: p.label }));
 </script>
 
 <Card class="flex w-96 flex-col border-l border-zinc-200 dark:border-zinc-800">
 	<div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
 		<h3 class="font-semibold">Chat with meeting</h3>
-		<div class="mt-3 grid grid-cols-[1fr,1fr] gap-2">
-			<Select bind:value={provider} options={aiOptions} />
-			<input bind:value={model} placeholder="model" class="h-8 w-full rounded-md border border-zinc-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950" />
+		<div class="mt-3">
+			<ModelSelect id="chat-ai-model" value={selectedModel.id} onchange={(id) => selectedModelId = id} disabled={loading} />
 		</div>
 		<input bind:value={docQuery} placeholder="Policy document query (optional)" class="mt-2 h-8 w-full rounded-md border border-zinc-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950" />
 	</div>

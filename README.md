@@ -21,6 +21,24 @@ Files are read locally into the transcript editor, replacing its contents only a
 
 Run upload validation tests with `npm test` (Node.js 24+).
 
+## Configuring the model dropdown
+
+Edit **`AI_MODELS` in `src/lib/constants.ts`** to control the options shown in transcript analysis, live meetings, and chat. Users select a friendly name instead of entering a provider or model ID. The first entry is the default.
+
+To add an option, append an entry like this to the array, then rebuild/deploy:
+
+```ts
+{
+  id: 'openrouter-gpt-4o', // Unique dropdown ID
+  label: 'GPT-4o · OpenRouter',
+  provider: 'openrouter', // 'openrouter', 'workers-ai', or 'llmapi'
+  model: 'openai/gpt-4o', // Exact model ID sent to the provider
+  description: 'For meetings that need more detailed analysis.'
+}
+```
+
+Provider credentials must be configured separately. Remove entries for providers you do not offer. Chat defaults to the meeting's model when it is still listed, or the first configured option otherwise. This list controls the interface, not API authorization.
+
 ## Project structure
 
 ```
