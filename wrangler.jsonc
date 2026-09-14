@@ -22,6 +22,16 @@
 		"DEEPGRAM_STT_MODEL": "nova-2",
 		"ELEVENLABS_STT_MODEL": "scribe_v1",
 		"POLICY_OBSERVATORY_DOCS_URL": "https://api.policyobservatory.org/v1/docs"
+		// Add these in the Cloudflare dashboard as Encrypted Secrets instead of plain vars:
+		// OPENROUTER_API_KEY
+		// HF_TOKEN
+		// DEEPGRAM_API_KEY
+		// ELEVENLABS_API_KEY
+		// CF_ACCOUNT_ID
+		// CF_API_TOKEN
+		// LLMAPI_URL         (optional)
+		// LLMAPI_KEY         (optional)
+		// POLICY_OBSERVATORY_API_KEY (optional)
 	},
 	"d1_databases": [
 		{
