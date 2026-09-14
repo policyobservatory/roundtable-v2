@@ -34,11 +34,5 @@
 			"binding": "AUDIO",
 			"bucket_name": "roundtable-v2-audio"
 		}
-	],
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_classes": []
-		}
 	]
 }
