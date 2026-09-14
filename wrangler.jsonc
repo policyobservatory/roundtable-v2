@@ -1,0 +1,45 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "roundtable-v2",
+	"compatibility_date": "2026-09-14",
+	"compatibility_flags": ["nodejs_als"],
+	"pages_build_output_dir": ".svelte-kit/cloudflare",
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"APP_ORIGIN": "*",
+		"TRANSCRIPT_CHUNK_SIZE": "6000",
+		"WORKERS_AI_MODEL": "@cf/meta/llama-3.1-8b-instruct",
+		"OPENROUTER_MODEL": "openai/gpt-4o-mini",
+		"LLMAPI_MODEL": "gpt-4o-mini",
+		"HF_STT_MODEL": "openai/whisper-large-v3",
+		"DEEPGRAM_STT_MODEL": "nova-2",
+		"ELEVENLABS_STT_MODEL": "scribe_v1",
+		"POLICY_OBSERVATORY_DOCS_URL": "https://api.policyobservatory.org/v1/docs"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "roundtable-v2-db",
+			// Run `wrangler d1 create roundtable-v2-db` and paste the id below
+			"database_id": "<your-database-id>"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "TRANSCRIPTS",
+			"bucket_name": "roundtable-v2-transcripts"
+		},
+		{
+			"binding": "AUDIO",
+			"bucket_name": "roundtable-v2-audio"
+		}
+	],
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_classes": []
+		}
+	]
+}
