@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Icon, ArrowLeft, MessageCircle } from '@lucide/svelte';
-	import type { MeetingMap, Meeting } from '$lib/types';
+	import type { MeetingMap, Meeting } from '$shared/types';
 	import ChatPanel from './ChatPanel.svelte';
 
 	let {

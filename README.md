@@ -1,30 +1,24 @@
 # Roundtable v2
 
-A Cloudflare-native meeting analysis app.
+A Cloudflare-native meeting analysis app deployed as a **Cloudflare Worker with static assets**.
 
-- **Frontend**: [SvelteKit](https://kit.svelte.dev/) with [Tailwind CSS](https://tailwindcss.com/)
-- **Backend**: [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/) / Workers
+- **Frontend**: [SvelteKit](https://kit.svelte.dev/) with [Tailwind CSS](https://tailwindcss.com/), built as a static SPA
+- **Backend**: [Hono](https://hono.dev/) on [Cloudflare Workers](https://workers.cloudflare.com/)
+- **Static assets**: [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)
 - **Database**: [Cloudflare D1](https://developers.cloudflare.com/d1/)
 - **Object storage**: [Cloudflare R2](https://developers.cloudflare.com/r2/)
-- **AI transcript analysis**: OpenRouter, Cloudflare Workers AI, or any OpenAI-compatible LLM API
+- **AI transcript analysis**: OpenRouter, Cloudflare Workers AI REST API, or any OpenAI-compatible LLM API
 - **Speech-to-text**: Deepgram, ElevenLabs, or Hugging Face
 - **Document chat**: references `api.policyobservatory.org/v1/docs`
 
 ## Project structure
 
 ```
-src/
-  lib/
-    ai.ts              # AI provider abstraction
-    stt.ts             # STT provider abstraction
-    db.ts              # D1 access layer & migrations
-    storage.ts         # R2 helpers
-    docs.ts            # Policy Observatory document API client
-    analysis.ts        # Chunked transcript analysis
-    platform.ts        # Cloudflare platform env helpers
-  routes/
-    api/               # API routes (run on Workers)
-    +page.svelte       # Main app
+apps/api/src/index.ts   # Hono Worker with all API routes
+shared/                 # Domain logic used by both Worker and frontend
+src/                    # SvelteKit frontend
+dist/                   # Built static frontend (gitignored)
+wrangler.jsonc          # Worker, D1, R2, assets bindings
 ```
 
 ## Required secrets / bindings
@@ -38,12 +32,13 @@ wrangler secret put DEEPGRAM_API_KEY
 wrangler secret put ELEVENLABS_API_KEY
 wrangler secret put CF_ACCOUNT_ID
 wrangler secret put CF_API_TOKEN
-wrangler secret put LLMAPI_URL     # optional
-wrangler secret put LLMAPI_KEY       # optional
-wrangler secret put POLICY_OBSERVATORY_API_KEY  # optional
+# optional
+wrangler secret put LLMAPI_URL
+wrangler secret put LLMAPI_KEY
+wrangler secret put POLICY_OBSERVATORY_API_KEY
 ```
 
-Create D1 + R2 resources:
+Create D1 + R2 resources (already done for the initial deployment):
 
 ```bash
 wrangler d1 create roundtable-v2-db
@@ -57,17 +52,19 @@ Paste the D1 database ID into `wrangler.jsonc` under `d1_databases.database_id`.
 
 ```bash
 npm install
-npm run dev              # plain Vite dev (API routes won't have Cloudflare bindings)
-npm run preview          # full Cloudflare Pages Functions with local D1/R2
-```
 
-For `preview`, bindings are created locally on first run. The schema is auto-created at runtime.
+# Terminal 1 — Hono API Worker (also serves dist assets once built)
+npx wrangler dev
+
+# Terminal 2 — SvelteKit dev server (calls /api routes proxied by Wrangler)
+npm run dev
+```
 
 ## Deploy
 
 ```bash
 npm run build
-wrangler pages deploy
+npx wrangler deploy
 ```
 
 Or push to `main` with the included GitHub Actions workflow after adding `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` to repository secrets.

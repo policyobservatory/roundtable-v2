@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Icon, MessageSquareText, Mic, Trash2, Loader2 } from '@lucide/svelte';
-	import type { AIProvider, Meeting, STTProvider } from '$lib/types';
+	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
 	import { AI_PROVIDERS, STT_PROVIDERS } from '$lib/constants';
 
 	let {

@@ -10,7 +10,7 @@
 		deleteMeeting,
 		analyzeMeeting
 	} from '$lib/api';
-	import type { AIProvider, Meeting, STTProvider } from '$lib/types';
+	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
 
 	type View = 'input' | 'live' | 'canvas';
 

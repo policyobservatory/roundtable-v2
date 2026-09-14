@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const appEnvSchema = z.object({
-	// Non-secret vars from wrangler.jsonc
+	// Non-secret vars
 	APP_ORIGIN: z.string().default('*'),
 	TRANSCRIPT_CHUNK_SIZE: z.coerce.number().default(6000),
 	WORKERS_AI_MODEL: z.string().default('@cf/meta/llama-3.1-8b-instruct'),

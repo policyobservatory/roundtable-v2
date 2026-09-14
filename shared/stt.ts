@@ -33,7 +33,6 @@ async function huggingFaceSTT(audio: Blob, env: AppEnv): Promise<{ text: string 
 		const err = await res.text();
 		throw new Error(`HuggingFace STT error ${res.status}: ${err}`);
 	}
-	// HF can return { text: "..." } or raw string depending on model
 	const data = (await res.json()) as { text?: string } | string;
 	if (typeof data === 'string') return { text: data };
 	return { text: data.text ?? '' };

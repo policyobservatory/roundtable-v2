@@ -1,5 +1,5 @@
-import type { AIProvider, Meeting, STTProvider } from './types';
-import type { AnalysisEvent } from './analysis';
+import type { AIProvider, Meeting, STTProvider } from '$shared/types';
+import type { AnalysisEvent } from '$shared/analysis';
 
 const base = '';
 

@@ -19,7 +19,6 @@ export async function searchDocuments(query: string, env: AppEnv): Promise<Docum
 		const err = await res.text();
 		throw new Error(`Document API error ${res.status}: ${err}`);
 	}
-	// Normalize several possible shapes
 	const data = (await res.json()) as
 		| DocumentResult[]
 		| { results?: DocumentResult[]; data?: DocumentResult[] }

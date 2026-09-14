@@ -11,8 +11,6 @@
 		"sourceMap": true,
 		"strict": true,
 		"moduleResolution": "bundler",
-		"types": [
-			"./worker-configuration.d.ts"
-		]
+		"types": ["vite/client", "./worker-configuration.d.ts"]
 	}
 }

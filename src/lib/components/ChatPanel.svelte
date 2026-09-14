@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Icon, Send, Loader2 } from '@lucide/svelte';
 	import { chat } from '$lib/api';
-	import type { AIProvider } from '$lib/types';
+	import type { AIProvider } from '$shared/types';
 	import { AI_PROVIDERS } from '$lib/constants';
 
 	let {

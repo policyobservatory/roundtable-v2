@@ -2,7 +2,7 @@
 	import { Icon, Mic, Square, ArrowLeft, Loader2 } from '@lucide/svelte';
 	import { createMeeting, appendSegment, analyzeMeeting } from '$lib/api';
 	import { transcribe } from '$lib/api';
-	import type { AIProvider, Meeting, STTProvider } from '$lib/types';
+	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
 	import { AI_PROVIDERS, STT_PROVIDERS } from '$lib/constants';
 
 	let {

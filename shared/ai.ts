@@ -45,7 +45,7 @@ export async function chatCompletion(
 	provider: AIProvider,
 	model: string,
 	env: AppEnv,
-	opts: { temperature?: number; max_tokens?: number; stream?: boolean } = {}
+	opts: { temperature?: number; max_tokens?: number } = {}
 ): Promise<string> {
 	switch (provider) {
 		case 'workers-ai':
@@ -87,7 +87,7 @@ export function buildFinalMap(chunks: { summary: string; nodes: MeetingNode[] }[
 	const root: MeetingNode = {
 		id: 'root',
 		title: 'Meeting Overview',
-		summary: chunks.map((c) => c.summary).join(' '), // eslint-disable-line prefer-template
+		summary: chunks.map((c) => c.summary).join(' '),
 		children: []
 	};
 	for (const chunk of chunks) {
