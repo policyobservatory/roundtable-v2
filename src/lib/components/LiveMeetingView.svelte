@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { Mic, Square, ArrowLeft, Loader2 } from '@lucide/svelte';
-	import { createMeeting, appendSegment, analyzeMeeting } from '$lib/api';
-	import { transcribe } from '$lib/api';
+	import { Mic, Monitor, Square, ArrowLeft, Loader2 } from '@lucide/svelte';
+	import { onDestroy } from 'svelte';
+	import { createMeeting, appendSegment, analyzeMeeting, getMeeting, transcribe } from '$lib/api';
+	import { acquireAudio, recordAudio, stopMediaStream, type AudioSource, type AudioRecording } from '$lib/live-audio';
 	import type { Meeting, STTProvider } from '$shared/types';
 	import { DEFAULT_AI_MODEL, getAIModel, STT_PROVIDERS } from '$lib/constants';
 	import ModelSelect from '$lib/components/ModelSelect.svelte';
@@ -23,26 +24,60 @@
 	let meetingId = $state<string | null>(null);
 	let recording = $state(false);
 	let starting = $state(false);
-	let recorder = $state<MediaRecorder | null>(null);
+	let audioSource = $state<AudioSource>('microphone');
+	let stopping = $state(false);
+	let capture: AudioRecording | null = null;
+	let sourceStream: MediaStream | null = null;
+	let disposed = false;
 	let segments = $state<string[]>([]);
 	let status = $state('');
 	let analyzing = $state(false);
 
+	const busy = $derived(starting || recording || stopping || analyzing);
 	const sttOptions = STT_PROVIDERS.map((p) => ({ value: p.value, label: p.label }));
+	const sourceOptions = [
+		{ value: 'microphone', label: 'Microphone' },
+		{ value: 'tab', label: 'Browser tab audio' }
+	];
+
+	onDestroy(() => {
+		disposed = true;
+		capture?.dispose();
+		if (sourceStream) stopMediaStream(sourceStream);
+	});
 
 	async function start() {
-		if (starting || recording || analyzing) return;
+		if (busy) return;
 		starting = true;
+		status = audioSource === 'tab' ? 'Choose a tab and enable Share tab audio...' : 'Requesting microphone access...';
 		try {
+			// Request permission before creating a meeting, directly from the user gesture.
+			const stream = await acquireAudio(audioSource);
+			if (disposed) { stopMediaStream(stream); return; }
+			sourceStream = stream;
+			const provider = sttProvider;
 			const res = await createMeeting({
 				transcript: '',
 				provider: selectedModel.provider,
 				model: selectedModel.model
 			});
+			if (disposed) { stopMediaStream(stream); return; }
+			if (stream.getTracks().some((track) => track.readyState === 'ended')) {
+				throw new Error('Audio sharing ended before recording started. Please try again.');
+			}
 			meetingId = res.id;
+			segments = [];
+			capture = recordAudio(stream, async (blob) => {
+				const { text } = await transcribe(provider, blob);
+				if (disposed || !text.trim()) return;
+				await appendSegment({ meeting_id: res.id, text });
+				if (!disposed) segments = [...segments, text];
+			}, (err) => { status = `Audio error: ${err.message}`; }, () => { void stop(); });
 			recording = true;
-			status = 'Recording...';
+			status = audioSource === 'tab' ? 'Transcribing shared tab audio...' : 'Transcribing microphone audio...';
 		} catch (err: unknown) {
+			if (sourceStream) stopMediaStream(sourceStream);
+			sourceStream = null;
 			status = err instanceof Error ? err.message : String(err);
 		} finally {
 			starting = false;
@@ -50,67 +85,42 @@
 	}
 
 	async function stop() {
-		recorder?.stop();
-		recorder?.stream.getTracks().forEach((t) => t.stop());
+		if (!recording || stopping || analyzing) return;
 		recording = false;
-		if (meetingId) {
+		stopping = true;
+		status = 'Finishing transcription and saving the final audio chunk...';
+		try {
+			await capture?.stop();
+			capture = null;
+			sourceStream = null;
+			if (disposed) return;
+			if (!segments.length || !meetingId) {
+				status = 'No speech was detected. Check that the selected source is playing audio, then try again.';
+				return;
+			}
 			analyzing = true;
 			status = 'Analyzing...';
-			try {
-				for await (const event of analyzeMeeting(meetingId, selectedModel.provider, selectedModel.model)) {
-					if (event && typeof event === 'object' && 'type' in event) {
-						if (event.type === 'progress') status = `Analyzed ${event.processed}/${event.total}`;
-						if (event.type === 'complete') {
-							const { meeting } = await import('$lib/api').then((m) => m.getMeeting(meetingId as string));
-							onEnd(meeting);
-							return;
-						}
-					}
+			for await (const event of analyzeMeeting(meetingId, selectedModel.provider, selectedModel.model)) {
+				if (disposed) return;
+				if (event.type === 'error') throw new Error(event.message);
+				if (event.type === 'progress') status = `Analyzed ${event.processed}/${event.total}`;
+				if (event.type === 'complete') {
+					const { meeting } = await getMeeting(meetingId);
+					if (!disposed) onEnd(meeting);
+					return;
 				}
-			} catch (err: unknown) {
-				onEnd(null, err instanceof Error ? err.message : String(err));
-			} finally {
-				analyzing = false;
 			}
-		} else {
-			onEnd(null);
-		}
-	}
-
-	async function captureChunk() {
-		if (!meetingId) return;
-		const mid = meetingId;
-		try {
-			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-			const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-			const chunks: Blob[] = [];
-			mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-			mediaRecorder.onstop = async () => {
-				const blob = new Blob(chunks, { type: 'audio/webm' });
-				if (blob.size < 1000) return;
-				try {
-					const { text } = await transcribe(sttProvider, blob);
-					if (text.trim()) {
-						segments = [...segments, text];
-						await appendSegment({ meeting_id: mid, text });
-					}
-				} catch (err: unknown) {
-					status = `STT error: ${err instanceof Error ? err.message : String(err)}`;
-				}
-			};
-			recorder = mediaRecorder;
-			mediaRecorder.start();
-			setTimeout(() => mediaRecorder.stop(), 5000);
+			throw new Error('Analysis ended without a completed meeting.');
 		} catch (err: unknown) {
-			status = `Microphone error: ${err instanceof Error ? err.message : String(err)}`;
+			status = `Could not finish the meeting: ${err instanceof Error ? err.message : String(err)}. Saved transcript segments are still available in Past Meetings.`;
+		} finally {
+			capture?.dispose();
+			capture = null;
+			sourceStream = null;
+			stopping = false;
+			analyzing = false;
 		}
 	}
-
-	$effect(() => {
-		if (!recording || !meetingId) return;
-		const interval = setInterval(captureChunk, 6000);
-		return () => clearInterval(interval);
-	});
 </script>
 
 <div class="flex min-h-screen flex-col items-center bg-zinc-50/50 px-6 py-10 dark:bg-zinc-950/50">
@@ -123,29 +133,45 @@
 
 		<Card class="p-6">
 			<div class="space-y-5">
-				<ModelSelect id="live-ai-model" bind:value={selectedModelId} disabled={starting || recording || analyzing || !!meetingId} />
+				<ModelSelect id="live-ai-model" bind:value={selectedModelId} disabled={busy} />
+
+				<div class="space-y-2">
+					<Select id="live-audio-source" label="Audio source" bind:value={audioSource} options={sourceOptions} disabled={busy} />
+					{#if audioSource === 'tab'}
+						<p class="text-xs leading-relaxed text-zinc-500">
+							Use desktop Chrome or Edge. In the sharing picker, choose a browser tab and enable
+							<strong>Share tab audio</strong>. Only shared audio is sent for transcription, not video.
+							Your microphone is not included. Let participants know before transcribing.
+						</p>
+					{/if}
+				</div>
 
 				<div>
 					<label for="live-stt-provider" class="mb-1 block text-xs font-medium text-zinc-500">STT provider</label>
-					<Select id="live-stt-provider" bind:value={sttProvider} options={sttOptions} disabled={starting || recording || analyzing} />
+					<Select id="live-stt-provider" bind:value={sttProvider} options={sttOptions} disabled={busy} />
 				</div>
 
-				{#if !recording}
-					<Button size="lg" class="w-full bg-red-600 hover:bg-red-700" onclick={start} disabled={starting || analyzing}>
-						<Mic class="h-5 w-5" /> Start recording
+				{#if starting || stopping || analyzing}
+					<Button size="lg" class="w-full" disabled>
+						<Loader2 class="h-5 w-5 animate-spin" />
+						{starting ? 'Starting...' : stopping && !analyzing ? 'Finishing transcription...' : 'Analyzing...'}
+					</Button>
+				{:else if recording}
+					<Button size="lg" class="w-full" onclick={stop}>
+						<Square class="h-5 w-5" /> Stop & analyze
 					</Button>
 				{:else}
-					<Button size="lg" class="w-full" onclick={stop} disabled={analyzing}>
-						{#if analyzing}
-							<Loader2 class="h-5 w-5 animate-spin" /> {status}
+					<Button size="lg" class="w-full bg-red-600 hover:bg-red-700" onclick={start}>
+						{#if audioSource === 'tab'}
+							<Monitor class="h-5 w-5" /> Share tab & start
 						{:else}
-							<Square class="h-5 w-5" /> Stop & analyze
+							<Mic class="h-5 w-5" /> Start recording
 						{/if}
 					</Button>
 				{/if}
 
 				{#if status}
-					<p class="text-center text-sm text-zinc-500">{status}</p>
+					<p role="status" class="text-center text-sm text-zinc-500">{status}</p>
 				{/if}
 			</div>
 		</Card>

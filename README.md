@@ -87,6 +87,18 @@ The default speech option, **Deepgram Nova-3 · Cloudflare**, runs [`@cf/deepgra
 
 **Whisper Large v3 Turbo · Cloudflare** is also available in both speech dropdowns. It runs [`@cf/openai/whisper-large-v3-turbo`](https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/) through the same `AI` binding via `/api/stt/whisper`, using batch transcription of recorded audio chunks. It needs no OpenAI or Hugging Face API key. The existing Hugging Face option remains separate. Deepgram Nova-3 remains the default.
 
+## Transcribing browser tab audio
+
+1. Open **Start Live Meeting** and select **Browser tab audio** under **Audio source**.
+2. Choose a speech model (Cloudflare Nova-3, Cloudflare Whisper, or another configured provider).
+3. Click **Share tab & start**. In the browser picker, select the tab playing the meeting and enable **Share tab audio**.
+4. Keep that tab playing. Transcript segments appear as they are transcribed and saved.
+5. Click **Stop & analyze**, or use the browser's **Stop sharing** control. Roundtable finishes the last audio chunk and pending transcriptions before starting analysis.
+
+Desktop Chrome or Edge over HTTPS is recommended; tab audio availability depends on browser and operating system. Selecting a window/screen or leaving audio sharing unchecked may provide no audio, in which case Roundtable explains how to retry. Cancelling the picker does not switch to microphone capture.
+
+Only the shared audio track is recorded and sent to the speech provider. The browser also grants a video track for tab sharing, but Roundtable does not record or upload video. Microphone audio is **not mixed in**: to capture your microphone instead, choose **Microphone**. Let participants know before transcribing, and avoid sharing a tab that contains unrelated/private audio. Leaving the live meeting stops capture and discards audio that has not yet been submitted; use **Stop & analyze** to finish and save normally.
+
 ## Local development
 
 ```bash
