@@ -7,6 +7,7 @@
 	import Textarea from '$lib/components/ui/Textarea.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
 	import { timeAgo } from '$lib/utils';
+	import { readTranscriptFile, TRANSCRIPT_ACCEPT } from '$lib/transcript-upload';
 
 	let {
 		isLoading = false,
@@ -29,6 +30,30 @@
 	} = $props();
 
 	let transcript = $state('');
+	let isReadingFile = $state(false);
+	let uploadError = $state('');
+	let uploadedFileName = $state('');
+	let inputDisabled = $derived(isLoading || isReadingFile);
+
+	async function handleFileChange(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file || inputDisabled) return;
+
+		uploadError = '';
+		uploadedFileName = '';
+		isReadingFile = true;
+		try {
+			transcript = await readTranscriptFile(file);
+			uploadedFileName = file.name;
+		} catch (err: unknown) {
+			uploadError = err instanceof Error ? err.message : 'Could not read the transcript file.';
+		} finally {
+			isReadingFile = false;
+			// Allow selecting the same file again, including after a failed read.
+			input.value = '';
+		}
+	}
 	let aiProvider = $state<AIProvider>('openrouter');
 	let aiModel = $state('openai/gpt-4o-mini');
 	let sttProvider = $state<STTProvider>('deepgram');
@@ -42,7 +67,7 @@
 	});
 
 	function handleSubmit() {
-		if (!transcript.trim()) return;
+		if (inputDisabled || !transcript.trim()) return;
 		onSubmit(transcript, aiProvider, aiModel);
 	}
 
@@ -62,7 +87,7 @@
 		<!-- Header -->
 		<div class="space-y-2 text-center">
 			<h1 class="text-4xl font-semibold tracking-tight">Roundtable</h1>
-			<p class="text-zinc-500">Paste a meeting transcript and visualize it as an interactive map.</p>
+			<p class="text-zinc-500">Paste or upload a meeting transcript and visualize it as an interactive map.</p>
 		</div>
 
 		<div class={hasMeetings ? 'grid grid-cols-1 gap-8 lg:grid-cols-2' : 'mx-auto max-w-2xl'}>
@@ -72,7 +97,35 @@
 
 				<Card class="p-5">
 					<div class="space-y-4">
-						<Textarea bind:value={transcript} placeholder="Paste your meeting transcript here..." rows={10} class="h-52 resize-y" disabled={isLoading} />
+						<div class="space-y-2">
+							<label for="transcript-file" class="block text-sm font-medium">Upload a transcript</label>
+							<input
+								id="transcript-file"
+								type="file"
+								accept={TRANSCRIPT_ACCEPT}
+								onchange={handleFileChange}
+								disabled={inputDisabled}
+								aria-describedby={uploadError ? 'transcript-file-help transcript-file-error' : 'transcript-file-help'}
+								aria-invalid={!!uploadError}
+								class="block w-full rounded-md text-sm text-zinc-500 file:mr-3 file:rounded-md file:border file:border-zinc-300 file:bg-transparent file:px-3 file:py-2 file:text-sm file:font-medium file:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 disabled:opacity-50 dark:file:border-zinc-700 dark:file:text-zinc-100"
+							/>
+							<p id="transcript-file-help" class="text-xs text-zinc-500">
+								Supported: .txt, .md, .srt, .vtt (UTF-8 text, up to 5 MB).
+								Uploading replaces the text below. Review or edit it before mapping.
+							</p>
+							<div role="status" class="text-xs text-zinc-500 break-words">
+								{#if isReadingFile}
+									Reading transcript...
+								{:else if uploadedFileName}
+									Loaded {uploadedFileName}. Ready to review below.
+								{/if}
+							</div>
+							{#if uploadError}
+								<p id="transcript-file-error" role="alert" class="text-sm text-red-600">{uploadError}</p>
+							{/if}
+						</div>
+
+						<Textarea bind:value={transcript} placeholder="Paste your meeting transcript here, or upload a file above..." rows={10} class="h-52 resize-y" disabled={inputDisabled} />
 
 						<div class="flex items-center gap-2">
 							<span class="shrink-0 text-xs text-zinc-500">AI Model:</span>
@@ -84,7 +137,7 @@
 							<p class="text-sm text-red-600">{error}</p>
 						{/if}
 
-						<Button size="lg" class="w-full" onclick={handleSubmit} disabled={isLoading || !transcript.trim()}>
+						<Button size="lg" class="w-full" onclick={handleSubmit} disabled={inputDisabled || !transcript.trim()}>
 							{#if isLoading}
 								<Loader2 class="h-4 w-4 animate-spin" />
 								{#if progress && progress.total > 1}
@@ -108,7 +161,7 @@
 							<Select bind:value={sttProvider} options={sttOptions} disabled={isLoading} class="flex-1" />
 						</div>
 
-						<Button variant="outline" size="lg" class="w-full" onclick={onStartLive} disabled={isLoading}>
+						<Button variant="outline" size="lg" class="w-full" onclick={onStartLive} disabled={inputDisabled}>
 							<Mic class="h-5 w-5" />
 							Start Live Meeting
 						</Button>

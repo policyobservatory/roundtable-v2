@@ -11,6 +11,16 @@ A Cloudflare-native meeting analysis app deployed as a **Cloudflare Worker with 
 - **Speech-to-text**: Deepgram, ElevenLabs, or Hugging Face
 - **Document chat**: references `api.policyobservatory.org/v1/docs`
 
+## Transcript input
+
+Paste a transcript or use **Upload a transcript** on the New Meeting screen.
+Supported files are `.txt`, `.md`, `.srt`, and `.vtt`, encoded as UTF-8, up to **5 MB**.
+Subtitle timestamps and speaker labels are preserved. PDF, Word, and audio files are not supported by this upload; export them to a supported text format first.
+
+Files are read locally into the transcript editor, replacing its contents only after validation succeeds. Review or edit the text, then click **Map this meeting** to submit it for analysis. Invalid uploads leave the existing text unchanged.
+
+Run upload validation tests with `npm test` (Node.js 24+).
+
 ## Project structure
 
 ```
