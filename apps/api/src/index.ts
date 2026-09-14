@@ -28,7 +28,7 @@ import { chatCompletion, analyzeLiveMap } from '../../../shared/ai';
 import { searchDocuments } from '../../../shared/docs';
 import type { AIProvider, ChatMessage, Meeting, STTProvider } from '../../../shared/types';
 
-interface Env extends AppEnv, Pick<Cloudflare.Env, 'AI'> {
+interface Env extends Omit<AppEnv, 'AI'>, Pick<Cloudflare.Env, 'AI'> {
 	DB: D1Database;
 	DOCUMENT_QUEUE: Queue<ReferenceMessage>;
 	TRANSCRIPTS: R2Bucket;

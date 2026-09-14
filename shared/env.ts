@@ -23,7 +23,7 @@ export const appEnvSchema = z.object({
 	POLICY_OBSERVATORY_API_KEY: z.string().optional()
 });
 
-export type AppEnv = z.infer<typeof appEnvSchema>;
+export type AppEnv = z.infer<typeof appEnvSchema> & Partial<Pick<Cloudflare.Env, 'AI'>>;
 
 export function parseEnv(env: Record<string, unknown>): AppEnv {
 	return appEnvSchema.passthrough().parse(env);

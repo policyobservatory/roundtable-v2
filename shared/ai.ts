@@ -1,6 +1,7 @@
 import type { AppEnv } from './env';
 import type { AIProvider, ChatMessage, MeetingMap, MeetingNode } from './types';
 import { z } from 'zod';
+import { DEFAULT_WORKERS_AI_MODEL } from './ai-defaults.ts';
 import { liveMapSchema, flattenMap } from './meeting-map.ts';
 
 const SYSTEM_PROMPT = `You are a meeting analyst. Given a meeting transcript (or chunk), extract key discussion topics, decisions, action items, concerns, and context flow.
@@ -103,14 +104,46 @@ export function buildFinalMap(chunks: { summary: string; nodes: MeetingNode[]; e
 	return { nodes, edges };
 }
 
+const workersTextSchema = z.object({
+	response: z.string().optional(),
+	choices: z.array(z.object({
+		message: z.object({ content: z.string().nullable().optional() }),
+		finish_reason: z.string().nullable().optional()
+	})).optional()
+});
+
+function workersText(output: unknown): string {
+	const parsed = workersTextSchema.safeParse(output);
+	if (!parsed.success) throw new Error('Workers AI returned an unsupported text response.');
+	const first = parsed.data.choices?.[0];
+	if (first?.finish_reason === 'length') throw new Error('Workers AI output was truncated. A larger output token limit is needed.');
+	const text = first?.message.content ?? parsed.data.response;
+	if (!text?.trim()) throw new Error('Workers AI returned no final text.');
+	return text;
+}
+
 async function workersAICompletion(
 	messages: ChatMessage[],
 	model: string,
 	env: AppEnv,
 	opts: { temperature?: number; max_tokens?: number }
 ): Promise<string> {
+	// Use typed bindings for curated Cloudflare models; preserve REST compatibility for older/custom models.
+	if (env.AI && (model === DEFAULT_WORKERS_AI_MODEL || model === '@cf/meta/llama-3.1-8b-instruct')) {
+		const input = {
+			messages,
+			stream: false as const,
+			temperature: opts.temperature ?? 0.7,
+			max_tokens: opts.max_tokens ?? 2048
+		};
+		// Separate overloads preserve the SDK's typed GLM input and its legacy model fallback.
+		const output = model === DEFAULT_WORKERS_AI_MODEL
+			? await env.AI.run(model, input)
+			: await env.AI.run(model, input);
+		return workersText(output);
+	}
 	if (!env.CF_ACCOUNT_ID || !env.CF_API_TOKEN) {
-		throw new Error('Missing CF_ACCOUNT_ID or CF_API_TOKEN for Workers AI');
+		throw new Error('Missing Workers AI binding or CF_ACCOUNT_ID/CF_API_TOKEN for REST fallback');
 	}
 	const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/${model}`;
 	const res = await fetch(url, {
@@ -129,11 +162,11 @@ async function workersAICompletion(
 		const err = await res.text();
 		throw new Error(`Workers AI error ${res.status}: ${err}`);
 	}
-	const data = (await res.json()) as { result?: { response?: string }; success: boolean; errors?: unknown[] };
+	const data = (await res.json()) as { result?: unknown; success: boolean; errors?: unknown[] };
 	if (!data.success) {
 		throw new Error(`Workers AI error: ${JSON.stringify(data.errors)}`);
 	}
-	return data.result?.response ?? '';
+	return workersText(data.result);
 }
 
 async function openRouterCompletion(
