@@ -223,7 +223,7 @@
 			{#if audioSource === 'tab'}<p class="text-xs leading-relaxed text-zinc-500">Use desktop Chrome or Edge. Choose a browser tab and enable <strong>Share tab audio</strong>. Only audio is uploaded, not video; the microphone is not mixed in. Let participants know before transcribing.</p>{/if}
 			<SpeechSettings idPrefix="live-speech" bind:provider={sttProvider} bind:language={speechLanguage} disabled={starting} />
 			<p class="text-xs text-zinc-500">Audio is transcribed in approximately {LIVE_AUDIO_CHUNK_MS / 1000}-second clips for more context. Text appears after each clip is processed, not word by word.</p>
-			<p class="text-xs text-zinc-500">The live transcript and conversation canvas appear side by side while recording. A recovery copy of recognized text is kept in this browser until Save & exit.</p>
+			<p class="text-xs text-zinc-500">The live transcript and conversation canvas appear side by side while recording. Topic titles and summaries are sent to Policy Observatory for background document searches. A recovery copy of recognized text is kept in this browser until Save & exit.</p>
 			<Button size="lg" class="w-full" onclick={start} disabled={starting || !!recovery || !!speechLanguageError(sttProvider, speechLanguage)}>
 				{#if starting}<Loader2 class="h-5 w-5 animate-spin" /> Starting...
 				{:else if audioSource === 'tab'}<Monitor class="h-5 w-5" /> Share tab & start
@@ -268,7 +268,7 @@
 					{/each}
 				</div>
 			</aside>
-			<div class="min-h-0 min-w-0 flex-1"><FlowCanvas {map} updating={mapUpdating || finishing} bind:view={canvasView} live={recording || finishing} /></div>
+			<div class="min-h-0 min-w-0 flex-1"><FlowCanvas {map} {meetingId} updating={mapUpdating || finishing} bind:view={canvasView} live={recording || finishing} /></div>
 		</div>
 	</div>
 {/if}

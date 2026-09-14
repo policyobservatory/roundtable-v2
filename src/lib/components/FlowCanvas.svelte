@@ -1,10 +1,31 @@
 <script lang="ts">
 	import { ZoomIn, ZoomOut, Maximize, X, Loader2 } from '@lucide/svelte';
 	import type { MeetingMap } from '$shared/types';
+	import { flattenMap } from '$shared/meeting-map';
+	import { referenceLabel, referenceRevision, type DocumentReference } from '$shared/document-references';
+	import { createDocumentReferences } from '$lib/document-references';
+	import { queueDocumentReferences, pollDocumentReferences } from '$lib/api';
+	import TopicReferences from './TopicReferences.svelte';
 	import { layoutGraph, CARD_WIDTH, type GraphView } from '$lib/graph-layout';
 	import Button from './ui/Button.svelte';
 
-	let { map, updating = false, view = $bindable<GraphView>('live'), live = false }: { map: MeetingMap; updating?: boolean; view?: GraphView; live?: boolean } = $props();
+	let { map, meetingId, updating = false, view = $bindable<GraphView>('live'), live = false }: { map: MeetingMap; meetingId?: string; updating?: boolean; view?: GraphView; live?: boolean } = $props();
+	let references = $state<Record<string, DocumentReference>>({});
+	let documentController = $state<ReturnType<typeof createDocumentReferences> | null>(null);
+	$effect(() => {
+		const id = meetingId;
+		references = {};
+		if (!id) { documentController = null; return; }
+		const controller = createDocumentReferences({
+			ensure: (nodes, retry, signal) => queueDocumentReferences(id, nodes, retry, signal),
+			poll: (fingerprints, signal) => pollDocumentReferences(id, fingerprints, signal),
+			onChange: (next) => { references = next; },
+			onError: () => { /* Optional document enrichment must not interrupt or clutter the meeting. */ }
+		});
+		documentController = controller;
+		return () => controller.dispose();
+	});
+	$effect(() => { documentController?.update(flattenMap(map).nodes); });
 	const graph = $derived(layoutGraph(map, view));
 	let followLatest = $state(true);
 	let scale = $state(0.8);
@@ -123,6 +144,7 @@
 							<h3 class="line-clamp-2 text-sm font-semibold">{node.title}</h3>
 							<p class="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400 {view === 'organized' ? 'line-clamp-2' : 'line-clamp-3'}">{node.summary}</p>
 							<p class="mt-3 text-[10px] text-blue-600 dark:text-blue-400">{node.decisions?.length ?? 0} decisions · {node.actions?.length ?? 0} actions · {node.concerns?.length ?? 0} concerns</p>
+							{#if meetingId && referenceLabel(references[referenceRevision(node)])}<p class="absolute bottom-3 left-4 right-4 truncate text-[10px] text-zinc-500">{referenceLabel(references[referenceRevision(node)])}</p>{/if}
 						</button>
 					{/each}
 				</div>
@@ -135,6 +157,7 @@
 				{#each [{ title: 'Decisions', items: selected.decisions }, { title: 'Action items', items: selected.actions }, { title: 'Concerns', items: selected.concerns }] as section}
 					{#if section.items?.length}<h4 class="mt-5 text-xs font-semibold">{section.title}</h4><ul class="mt-2 list-disc space-y-2 pl-4 text-xs">{#each section.items as item}<li>{item}</li>{/each}</ul>{/if}
 				{/each}
+				{#if meetingId}<TopicReferences reference={references[referenceRevision(selected)]} />{/if}
 			</aside>
 		{/if}
 	</div>
