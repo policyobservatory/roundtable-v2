@@ -19,7 +19,7 @@ test('local D1 persistence and API reliability', { timeout: 60000 }, async (t) =
 		const sql = (await readFile(new URL('../migrations/0001_initial.sql', import.meta.url), 'utf8')).replace(/^--.*$/gm, '');
 		await db.batch(sql.split(';').map((statement) => statement.trim()).filter(Boolean).map((statement) => db.prepare(statement)));
 		const compiled = await build({ entryPoints: ['apps/api/src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022' });
-		const { default: app } = await import('data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64'));
+		const { app } = await import('data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 		const env = { DB: db, TRANSCRIPTS: bucket, APP_ORIGIN: '*', AI: { async run() { return { text: 'Speech without D1' }; } } };
 		const post = (path, body, bindings = env) => app.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, bindings);
 		const created = await post('/api/meetings', { transcript: 'Initial notes', provider: 'openrouter', model: 'test' });

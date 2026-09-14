@@ -1,6 +1,7 @@
 import type { AIProvider, Meeting, MeetingMap, Segment, STTProvider } from '$shared/types';
 import type { AnalysisEvent } from '$shared/analysis';
 import type { SpeechLanguage } from '$shared/speech-settings';
+import type { ReferenceTopic, ReferenceAssignment, DocumentReference } from '$shared/document-references';
 
 const base = '';
 
@@ -91,6 +92,20 @@ export async function transcribe(provider: STTProvider, blob: Blob, language: Sp
 		throw new Error(err.error || `STT failed: ${res.status}`);
 	}
 	return res.json() as Promise<{ text: string }>;
+}
+
+export async function queueDocumentReferences(meetingId: string, nodes: ReferenceTopic[], retry: boolean, signal: AbortSignal) {
+	const res = await api(`/api/meetings/${encodeURIComponent(meetingId)}/references`, {
+		method: 'POST', body: JSON.stringify({ nodes, retry }), signal: AbortSignal.any([signal, AbortSignal.timeout(20000)])
+	});
+	return ((await res.json()) as { references: ReferenceAssignment[] }).references;
+}
+
+export async function pollDocumentReferences(meetingId: string, fingerprints: string[], signal: AbortSignal) {
+	const res = await api(`/api/meetings/${encodeURIComponent(meetingId)}/references?fingerprints=${fingerprints.join(',')}`, {
+		signal: AbortSignal.any([signal, AbortSignal.timeout(15000)])
+	});
+	return ((await res.json()) as { references: DocumentReference[] }).references;
 }
 
 export async function chat(data: {

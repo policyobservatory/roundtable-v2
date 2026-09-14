@@ -5,7 +5,8 @@
 	"compatibility_date": "2026-09-14",
 	"compatibility_flags": ["nodejs_als"],
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"traces": { "enabled": true }
 	},
 	"ai": {
 		"binding": "AI"
@@ -24,7 +25,7 @@
 		"HF_STT_MODEL": "openai/whisper-large-v3",
 		"DEEPGRAM_STT_MODEL": "@cf/deepgram/nova-3",
 		"ELEVENLABS_STT_MODEL": "scribe_v1",
-		"POLICY_OBSERVATORY_DOCS_URL": "https://api.policyobservatory.org/v1/docs"
+		"POLICY_OBSERVATORY_DOCS_URL": "https://api.policyobservatory.org/v1"
 		// Add these in the Cloudflare dashboard as Encrypted Secrets instead of plain vars:
 		// OPENROUTER_API_KEY
 		// HF_TOKEN
@@ -35,6 +36,18 @@
 		// LLMAPI_KEY         (optional)
 		// POLICY_OBSERVATORY_API_KEY (optional)
 	},
+	"queues": {
+		"producers": [{ "binding": "DOCUMENT_QUEUE", "queue": "roundtable-v2-documents" }],
+		"consumers": [{
+			"queue": "roundtable-v2-documents",
+			"max_batch_size": 1,
+			"max_batch_timeout": 1,
+			"max_concurrency": 3,
+			"max_retries": 5,
+			"dead_letter_queue": "roundtable-v2-documents-dead"
+		}]
+	},
+	"triggers": { "crons": ["* * * * *"] },
 	"d1_databases": [
 		{
 			"binding": "DB",

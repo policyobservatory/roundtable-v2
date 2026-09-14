@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
 import { bodyLimit } from 'hono/body-limit';
-import { liveMapSchema } from '../../../shared/meeting-map';
+import { liveMapSchema, flattenMap } from '../../../shared/meeting-map';
+import { ensureDocumentJobs, getDocumentReferences, dispatchDocumentJobs, consumeDocumentJobs } from '../../../shared/document-jobs';
+import type { ReferenceMessage } from '../../../shared/document-references';
 import type { D1Database, R2Bucket, Fetcher } from '@cloudflare/workers-types';
 import type { AppEnv } from '../../../shared/env';
 import { parseEnv } from '../../../shared/env';
@@ -28,6 +30,7 @@ import type { AIProvider, ChatMessage, Meeting, STTProvider } from '../../../sha
 
 interface Env extends AppEnv, Pick<Cloudflare.Env, 'AI'> {
 	DB: D1Database;
+	DOCUMENT_QUEUE: Queue<ReferenceMessage>;
 	TRANSCRIPTS: R2Bucket;
 	AUDIO: R2Bucket;
 	ASSETS: Fetcher;
@@ -38,7 +41,7 @@ async function getEnv(rawEnv: Env) {
 	return env;
 }
 
-const app = new Hono<{ Bindings: Env }>();
+export const app = new Hono<{ Bindings: Env }>();
 
 app.onError((err, c) => {
 	console.error(JSON.stringify({ event: 'api_error', path: c.req.path, message: err.message }));
@@ -129,6 +132,12 @@ app.post('/api/meetings/:id/analyze', async (c) => {
 	return stream(c, async (output) => {
 		try {
 			await runChunkedAnalysis(env.DB, id, transcript, provider, model, env, async (event) => {
+				if (event.type === 'complete' && env.DOCUMENT_QUEUE) {
+					// Persist final-card jobs without waiting for external searches or holding up the stream.
+					c.executionCtx.waitUntil(ensureDocumentJobs(env, id, flattenMap(event.map).nodes).catch(() => {
+						console.warn(JSON.stringify({ event: 'final_document_jobs_deferred', meetingId: id }));
+					}));
+				}
 				if (output.aborted) throw new Error('Analysis client disconnected');
 				await output.write(JSON.stringify(event) + '\n');
 			});
@@ -253,6 +262,32 @@ app.post('/api/chat', async (c) => {
 	return c.json({ content });
 });
 
+const referenceRequestSchema = z.object({
+	nodes: z.array(z.object({ id: z.string().min(1).max(200), title: z.string().max(300), summary: z.string().max(3000) })).min(1).max(20),
+	retry: z.boolean().default(false)
+});
+
+app.post('/api/meetings/:id/references', bodyLimit({ maxSize: 128 * 1024 }), async (c) => {
+	const parsed = referenceRequestSchema.safeParse(await c.req.json().catch(() => null));
+	if (!parsed.success) return c.json({ error: 'Invalid document reference request' }, 400);
+	const env = await getEnv(c.env);
+	const id = c.req.param('id');
+	if (!env.DOCUMENT_QUEUE) return c.json({ error: 'Document queue is not configured.' }, 503);
+	if (!await getMeeting(env.DB, id)) return c.json({ error: 'Meeting not found' }, 404);
+	const references = await ensureDocumentJobs(env, id, parsed.data.nodes, parsed.data.retry);
+	return c.json({ references }, 202);
+});
+
+app.get('/api/meetings/:id/references', async (c) => {
+	const fingerprints = (c.req.query('fingerprints') ?? '').split(',');
+	if (fingerprints.length > 20 || fingerprints.some((id) => !/^[a-f0-9]{64}$/.test(id))) return c.json({ error: 'Invalid reference fingerprints' }, 400);
+	const env = await getEnv(c.env);
+	const id = c.req.param('id');
+	if (!await getMeeting(env.DB, id)) return c.json({ error: 'Meeting not found' }, 404);
+	c.header('Cache-Control', 'no-store');
+	return c.json({ references: await getDocumentReferences(env.DB, id, fingerprints) });
+});
+
 app.get('/api/docs/search', async (c) => {
 	const env = await getEnv(c.env);
 	const query = c.req.query('q') ?? '';
@@ -273,4 +308,12 @@ app.notFound(async (c) => {
 	return response as unknown as Response;
 });
 
-export default app;
+export default {
+	fetch: app.fetch,
+	async queue(batch: MessageBatch<ReferenceMessage>, rawEnv: Env) {
+		await consumeDocumentJobs(batch, await getEnv(rawEnv));
+	},
+	async scheduled(_controller: ScheduledController, rawEnv: Env) {
+		await dispatchDocumentJobs(await getEnv(rawEnv));
+	}
+};

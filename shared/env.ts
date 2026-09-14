@@ -10,7 +10,7 @@ export const appEnvSchema = z.object({
 	HF_STT_MODEL: z.string().default('openai/whisper-large-v3'),
 	DEEPGRAM_STT_MODEL: z.literal('@cf/deepgram/nova-3').default('@cf/deepgram/nova-3'),
 	ELEVENLABS_STT_MODEL: z.string().default('scribe_v1'),
-	POLICY_OBSERVATORY_DOCS_URL: z.string().url().default('https://api.policyobservatory.org/v1/docs'),
+	POLICY_OBSERVATORY_DOCS_URL: z.string().url().default('https://api.policyobservatory.org/v1'),
 
 	// Secrets
 	OPENROUTER_API_KEY: z.string().optional(),
