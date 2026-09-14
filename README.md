@@ -92,17 +92,28 @@ The default speech option, **Deepgram Nova-3 · Cloudflare**, runs [`@cf/deepgra
 1. Open **Start Live Meeting** and select **Browser tab audio** under **Audio source**.
 2. Choose a speech model (Cloudflare Nova-3, Cloudflare Whisper, or another configured provider).
 3. Click **Share tab & start**. In the browser picker, select the tab playing the meeting and enable **Share tab audio**.
-4. Keep that tab playing. Transcript segments appear as they are transcribed and saved.
-5. Click **Stop & analyze**, or use the browser's **Stop sharing** control. Roundtable finishes the last audio chunk and pending transcriptions before starting analysis.
+4. Keep that tab playing. The **live transcript and conversation graph** appear side by side. Recognized text is shown immediately with a Pending save/Saved label. After enough speech arrives, the graph updates roughly every 10 seconds with new topics, labeled connections, decisions, actions, and concerns.
+5. Click **End meeting**, or use the browser's **Stop sharing** control. Roundtable finishes the last audio chunk and pending saves before final analysis. Review the map, then choose **Save & exit**.
 
 Desktop Chrome or Edge over HTTPS is recommended; tab audio availability depends on browser and operating system. Selecting a window/screen or leaving audio sharing unchecked may provide no audio, in which case Roundtable explains how to retry. Cancelling the picker does not switch to microphone capture.
 
-Only the shared audio track is recorded and sent to the speech provider. The browser also grants a video track for tab sharing, but Roundtable does not record or upload video. Microphone audio is **not mixed in**: to capture your microphone instead, choose **Microphone**. Let participants know before transcribing, and avoid sharing a tab that contains unrelated/private audio. Leaving the live meeting stops capture and discards audio that has not yet been submitted; use **Stop & analyze** to finish and save normally.
+Only the shared audio track is recorded and sent to the speech provider. The browser also grants a video track for tab sharing, but Roundtable does not record or upload video. Microphone audio is **not mixed in**: to capture your microphone instead, choose **Microphone**. Let participants know before transcribing, and avoid sharing a tab that contains unrelated/private audio. Leaving the live meeting stops capture and discards audio that has not yet been submitted; use **End meeting** to finish and save normally. Recognized text is backed up in this browser until **Save & exit**; reopening Live Meeting offers recovery. When browser storage is blocked/full, a warning is shown. **Download transcript** works even if D1 is unavailable.
+
+### Save and analysis recovery
+
+New live segments are written atomically to D1 with stable client-generated IDs. Transient connection/reset errors are retried with bounded backoff, and replaying a request cannot duplicate transcript text or inflate segment counts. Upload/paste transcripts remain in R2; new live text is assembled from ordered D1 segments. Legacy meetings continue reading their existing R2 transcript.
+
+If saving or final analysis still fails, the recognized transcript stays visible. Use **Retry save & analyze**, or download a copy; failed saves are never labeled as saved. Speech recognition and live-map previews no longer run D1 schema statements. Preview failures do not stop recording. Unsaved raw audio and failed STT chunks cannot be recovered from the text draft.
+
+See [the original-to-v2 feature comparison](docs/feature-parity.md) for restored behavior and remaining gaps.
 
 ## Local development
 
 ```bash
 npm install
+
+# Initialize the local schema once (DDL is no longer run on API requests)
+npx wrangler d1 migrations apply roundtable-v2-db --local
 
 # Terminal 1 — Hono API Worker (also serves dist assets once built)
 npx wrangler dev
@@ -114,12 +125,18 @@ npm run dev
 ## Deploy
 
 ```bash
+# Initialize a new production database before deploying; safe on existing v2 tables.
+npx wrangler d1 migrations apply roundtable-v2-db --remote
 npm run build
-npx wrangler deploy
+npx wrangler deploy --keep-vars
 ```
 
 Or push to `main` with the included GitHub Actions workflow after adding `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` to repository secrets.
 
 ## Chunking & streaming strategy
 
-Long transcripts are analyzed in ~6,000-character chunks. Each chunk result is saved to D1 as an `analysis_chunk` row and streamed to the client as a newline-delimited JSON event. The final map is aggregated from all chunks and stored on the `meetings` row. Transcripts themselves live in R2, so D1 row sizes stay small.
+Long transcripts are analyzed in ~6,000-character chunks. Each chunk result is saved to D1 as an `analysis_chunk` row and streamed to the client as a newline-delimited JSON event. The final map is aggregated from all chunks and stored on the `meetings` row. Uploaded transcripts and legacy live transcripts live in R2. New live meetings store independently retryable, ordered text segments in D1 and reconstruct the transcript when needed. Live previews are stateless, use up to 6,000 new characters plus the latest 40 topics as context, and merge into the client map; final analysis processes the complete saved transcript. Streaming event writes are awaited, and final-analysis retries replace existing per-part results instead of adding duplicates.
+
+After deploying this update, reload open clients before starting new recordings: the segment API now requires a stable ID, index, and timestamp. Existing saved meetings remain readable.
+
+`npm test` includes local D1/R2 integration tests using the installed Wrangler/Miniflare runtime. No production data or paid inference is used by those tests.
