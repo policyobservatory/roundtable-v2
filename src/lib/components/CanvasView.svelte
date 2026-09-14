@@ -55,7 +55,7 @@
 				<h3 class="mb-3 text-sm font-medium">Transcript</h3><p class="whitespace-pre-wrap text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">{transcript}</p>
 			</aside>
 		{/if}
-		<div class="min-h-0 min-w-0 flex-1"><FlowCanvas map={meeting.map ?? { nodes: [], edges: [] }} updating={retrying} /></div>
+		<div class="min-h-0 min-w-0 flex-1"><FlowCanvas map={meeting.map ?? { nodes: [], edges: [] }} updating={retrying} view="organized" /></div>
 		{#if showChat}<ChatPanel meetingId={meeting.id} provider={meeting.provider} model={meeting.model} />{/if}
 	</div>
 </div>

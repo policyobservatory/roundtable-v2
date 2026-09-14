@@ -11,6 +11,7 @@
 	import SpeechSettings from './SpeechSettings.svelte';
 	import ModelSelect from './ModelSelect.svelte';
 	import FlowCanvas from './FlowCanvas.svelte';
+	import type { GraphView } from '$lib/graph-layout';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';
 	import Select from './ui/Select.svelte';
@@ -39,6 +40,7 @@
 	let previewError = $state('');
 	let map = $state<MeetingMap>({ nodes: [], edges: [] });
 	let mapUpdating = $state(false);
+	let canvasView = $state<GraphView>('live');
 	let finalMeeting = $state<Meeting | null>(null);
 	let recovery = $state<LiveDraft | null>(null);
 	let elapsed = $state(0);
@@ -188,6 +190,7 @@
 					if (disposed) return;
 					finalMeeting = result.meeting;
 					map = event.map;
+					canvasView = 'organized';
 					status = 'Meeting saved. Review the map, then Save & exit.';
 					return;
 				}
@@ -265,7 +268,7 @@
 					{/each}
 				</div>
 			</aside>
-			<div class="min-h-0 min-w-0 flex-1"><FlowCanvas {map} updating={mapUpdating || finishing} /></div>
+			<div class="min-h-0 min-w-0 flex-1"><FlowCanvas {map} updating={mapUpdating || finishing} bind:view={canvasView} live={recording || finishing} /></div>
 		</div>
 	</div>
 {/if}
