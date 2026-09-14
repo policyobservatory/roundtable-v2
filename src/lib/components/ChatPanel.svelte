@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Icon, Send, Loader2 } from '@lucide/svelte';
+	import { Send, Loader2 } from '@lucide/svelte';
 	import { chat } from '$lib/api';
 	import type { AIProvider } from '$shared/types';
 	import { AI_PROVIDERS } from '$lib/constants';
@@ -66,7 +66,7 @@
 		{/each}
 		{#if loading}
 			<div class="flex items-center gap-2 text-sm text-zinc-500">
-				<Icon icon={Loader2} class="h-4 w-4 animate-spin" /> Thinking...
+				<Loader2 class="h-4 w-4 animate-spin" /> Thinking...
 			</div>
 		{/if}
 	</div>
@@ -75,7 +75,7 @@
 		<div class="flex gap-2">
 			<input bind:value={input} placeholder="Ask something..." class="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
 			<button type="submit" disabled={loading} class="rounded-lg bg-zinc-900 px-3 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900">
-				<Icon icon={Send} class="h-4 w-4" />
+				<Send class="h-4 w-4" />
 			</button>
 		</div>
 	</form>

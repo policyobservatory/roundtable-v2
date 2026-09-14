@@ -35,6 +35,11 @@ async function getEnv(rawEnv: Env) {
 
 const app = new Hono<{ Bindings: Env }>();
 
+app.onError((err, c) => {
+	console.error(err);
+	return c.json({ error: err.message, stack: err.stack }, 500);
+});
+
 app.use('*', async (c, next) => {
 	const origin = c.env.APP_ORIGIN;
 	c.header('Access-Control-Allow-Origin', origin);

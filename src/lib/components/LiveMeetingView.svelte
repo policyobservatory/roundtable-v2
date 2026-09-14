@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Icon, Mic, Square, ArrowLeft, Loader2 } from '@lucide/svelte';
+	import { Mic, Square, ArrowLeft, Loader2 } from '@lucide/svelte';
 	import { createMeeting, appendSegment, analyzeMeeting } from '$lib/api';
 	import { transcribe } from '$lib/api';
 	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
@@ -101,7 +101,7 @@
 
 <div class="mx-auto max-w-3xl p-6">
 	<button onclick={() => onEnd(null)} class="mb-6 inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900">
-		<Icon icon={ArrowLeft} class="h-4 w-4" /> Back
+		<ArrowLeft class="h-4 w-4" /> Back
 	</button>
 
 	<h1 class="mb-6 text-2xl font-bold">Live meeting</h1>
@@ -134,14 +134,14 @@
 
 		{#if !recording}
 			<button onclick={start} class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-5 py-3 font-medium text-white hover:bg-red-700">
-				<Icon icon={Mic} class="h-5 w-5" /> Start recording
+				<Mic class="h-5 w-5" /> Start recording
 			</button>
 		{:else}
 			<button onclick={stop} disabled={analyzing} class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-5 py-3 font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900">
 				{#if analyzing}
-					<Icon icon={Loader2} class="h-5 w-5 animate-spin" /> {status}
+					<Loader2 class="h-5 w-5 animate-spin" /> {status}
 				{:else}
-					<Icon icon={Square} class="h-5 w-5" /> Stop & analyze
+					<Square class="h-5 w-5" /> Stop & analyze
 				{/if}
 			</button>
 		{/if}

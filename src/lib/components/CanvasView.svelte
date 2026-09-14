@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Icon, ArrowLeft, MessageCircle } from '@lucide/svelte';
+	import { ArrowLeft, MessageCircle } from '@lucide/svelte';
 	import type { MeetingMap, Meeting } from '$shared/types';
 	import ChatPanel from './ChatPanel.svelte';
 
@@ -33,12 +33,12 @@
 	<div class="flex items-center justify-between border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
 		<div class="flex items-center gap-3">
 			<button onclick={onBack} class="rounded-md p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800">
-				<Icon icon={ArrowLeft} class="h-5 w-5" />
+				<ArrowLeft class="h-5 w-5" />
 			</button>
 			<h2 class="text-lg font-semibold">{meeting.title}</h2>
 		</div>
 		<button onclick={() => (showChat = !showChat)} class="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200">
-			<Icon icon={MessageCircle} class="h-4 w-4" />
+			<MessageCircle class="h-4 w-4" />
 			{showChat ? 'Hide chat' : 'Chat'}
 		</button>
 	</div>

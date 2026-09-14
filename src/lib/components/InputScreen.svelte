@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Icon, MessageSquareText, Mic, Trash2, Loader2 } from '@lucide/svelte';
+	import { MessageSquareText, Mic, Trash2, Loader2 } from '@lucide/svelte';
 	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
 	import { AI_PROVIDERS, STT_PROVIDERS } from '$lib/constants';
 
@@ -98,10 +98,10 @@
 				class="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-5 py-2.5 font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
 			>
 				{#if isLoading}
-					<Icon icon={Loader2} class="h-4 w-4 animate-spin" />
+					<Loader2 class="h-4 w-4 animate-spin" />
 					Analyzing...
 				{:else}
-					<Icon icon={MessageSquareText} class="h-4 w-4" />
+					<MessageSquareText class="h-4 w-4" />
 					Analyze transcript
 				{/if}
 			</button>
@@ -109,7 +109,7 @@
 				onclick={onStartLive}
 				class="inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-5 py-2.5 font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
 			>
-				<Icon icon={Mic} class="h-4 w-4" />
+				<Mic class="h-4 w-4" />
 				Live meeting
 			</button>
 		</div>
@@ -131,7 +131,7 @@
 							onclick={() => onDelete(meeting.id)}
 							class="ml-3 rounded-md p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
 						>
-							<Icon icon={Trash2} class="h-4 w-4" />
+							<Trash2 class="h-4 w-4" />
 						</button>
 					</div>
 				{/each}

@@ -27,5 +27,5 @@ export const appEnvSchema = z.object({
 export type AppEnv = z.infer<typeof appEnvSchema>;
 
 export function parseEnv(env: Record<string, unknown>): AppEnv {
-	return appEnvSchema.parse(env);
+	return appEnvSchema.passthrough().parse(env);
 }
