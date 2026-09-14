@@ -1,5 +1,6 @@
 import type { AIProvider, Meeting, MeetingMap, Segment, STTProvider } from '$shared/types';
 import type { AnalysisEvent } from '$shared/analysis';
+import type { SpeechLanguage } from '$shared/speech-settings';
 
 const base = '';
 
@@ -80,8 +81,8 @@ export async function* analyzeMeeting(
 	}
 }
 
-export async function transcribe(provider: STTProvider, blob: Blob) {
-	const res = await fetch(`/api/stt/${provider}`, {
+export async function transcribe(provider: STTProvider, blob: Blob, language: SpeechLanguage = 'auto') {
+	const res = await fetch(`/api/stt/${provider}?language=${encodeURIComponent(language)}`, {
 		method: 'POST',
 		body: blob
 	});

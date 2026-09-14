@@ -21,6 +21,7 @@ import {
 import { putTranscript, deleteTranscript } from '../../../shared/storage';
 import { runChunkedAnalysis } from '../../../shared/analysis';
 import { transcribeAudio } from '../../../shared/stt';
+import { isSpeechLanguage, speechLanguageError } from '../../../shared/speech-settings';
 import { chatCompletion, analyzeLiveMap } from '../../../shared/ai';
 import { searchDocuments } from '../../../shared/docs';
 import type { AIProvider, ChatMessage, Meeting, STTProvider } from '../../../shared/types';
@@ -179,9 +180,13 @@ app.post('/api/stt/:provider', async (c) => {
 	const provider = c.req.param('provider') as STTProvider;
 	const valid: STTProvider[] = ['huggingface', 'deepgram', 'whisper', 'elevenlabs'];
 	if (!valid.includes(provider)) return c.json({ error: 'Invalid STT provider' }, 400);
+	const language = c.req.query('language') ?? 'auto';
+	if (!isSpeechLanguage(language)) return c.json({ error: 'Invalid speech language' }, 400);
+	const languageError = speechLanguageError(provider, language);
+	if (languageError) return c.json({ error: languageError }, 400);
 	const audio = await c.req.blob();
 	if (!audio || audio.size === 0) return c.json({ error: 'Missing audio' }, 400);
-	return c.json(await transcribeAudio(provider, audio, env));
+	return c.json(await transcribeAudio(provider, audio, env, language));
 });
 
 app.post('/api/chat', async (c) => {

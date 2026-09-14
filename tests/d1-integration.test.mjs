@@ -69,6 +69,28 @@ test('local D1 persistence and API reliability', { timeout: 60000 }, async (t) =
 			assert.deepEqual(await res.json(), { text: 'Speech without D1' });
 		});
 
+		await t.test('speech language travels over HTTP and invalid presets are rejected before inference', async () => {
+			let calls = 0;
+			const bindings = { ...env, DB: { prepare() { assert.fail('STT must not touch D1'); } }, AI: { async run(model, input) {
+				calls++;
+				assert.equal(model, '@cf/openai/whisper-large-v3-turbo');
+				assert.equal(input.language, 'tl');
+				assert.equal(input.task, 'transcribe');
+				assert.equal(input.vad_filter, true);
+				return { text: 'Hindi pa approved. Review muna.' };
+			} } };
+			const send = (path) => app.request(path, { method: 'POST', body: new Blob(['audio']) }, bindings);
+			const response = await send('/api/stt/whisper?language=fil-en');
+			assert.equal(response.status, 200);
+			assert.deepEqual(await response.json(), { text: 'Hindi pa approved. Review muna.' });
+			for (const path of ['/api/stt/whisper?language=invalid', '/api/stt/whisper?language=', '/api/stt/deepgram?language=fil-en', '/api/stt/huggingface?language=tl']) {
+				const bad = await send(path);
+				assert.equal(bad.status, 400);
+				assert.ok((await bad.json()).error);
+			}
+			assert.equal(calls, 1);
+		});
+
 		await t.test('live preview bypasses D1; final analysis streams and saves a graph with details', async () => {
 			const originalFetch = globalThis.fetch;
 			const graph = { title: 'Planning', summary: 'Planning work', nodes: [

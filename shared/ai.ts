@@ -19,6 +19,8 @@ Rules:
 - Each node must have a unique, kebab-case id and a 1 sentence summary.
 - Use flat topic nodes and directed, labeled edges grounded in the transcript. Do not invent relationships.
 - Put decisions, action items and concerns in their own arrays. Leave arrays empty if none were stated.
+- Transcripts may code-switch between Filipino/Tagalog and English. Preserve the meaning of both languages, including negation, uncertainty, and proper names. Do not invent corrections for unclear speech.
+- Order new nodes by first appearance in the discussion. Reuse a topic rather than creating duplicates for its Filipino and English names.
 - If the chunk is a continuation, focus on new topics and link them thematically.
 - Do not wrap the JSON in markdown code fences.
 - Respond ONLY with valid JSON.`;
