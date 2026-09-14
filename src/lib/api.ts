@@ -1,7 +1,12 @@
-import type { AIProvider, Meeting, STTProvider } from '$shared/types';
+import type { AIProvider, Meeting, MeetingMap, Segment, STTProvider } from '$shared/types';
 import type { AnalysisEvent } from '$shared/analysis';
 
 const base = '';
+
+export class ApiError extends Error {
+	status: number;
+	constructor(message: string, status: number) { super(message); this.status = status; }
+}
 
 async function api(path: string, options?: RequestInit) {
 	const res = await fetch(`${base}${path}`, {
@@ -10,7 +15,7 @@ async function api(path: string, options?: RequestInit) {
 	});
 	if (!res.ok) {
 		const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-		throw new Error(err.error || `Request failed: ${res.status}`);
+		throw new ApiError(err.error || `Request failed: ${res.status}`, res.status);
 	}
 	return res;
 }
@@ -56,17 +61,23 @@ export async function* analyzeMeeting(
 	if (!reader) throw new Error('Stream not available');
 	const decoder = new TextDecoder();
 	let buffer = '';
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		buffer += decoder.decode(value, { stream: true });
-		const lines = buffer.split('\n');
-		buffer = lines.pop() ?? '';
-		for (const line of lines) {
-			if (line.trim()) yield JSON.parse(line) as AnalysisEvent;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+			const lines = buffer.split('\n');
+			buffer = lines.pop() ?? '';
+			for (const line of lines) {
+				if (line.trim()) yield JSON.parse(line) as AnalysisEvent;
+			}
 		}
+		buffer += decoder.decode();
+		if (buffer.trim()) yield JSON.parse(buffer) as AnalysisEvent;
+	} finally {
+		await reader.cancel().catch(() => {});
+		reader.releaseLock();
 	}
-	if (buffer.trim()) yield JSON.parse(buffer) as AnalysisEvent;
 }
 
 export async function transcribe(provider: STTProvider, blob: Blob) {
@@ -95,13 +106,21 @@ export async function chat(data: {
 	return res.json() as Promise<{ content: string }>;
 }
 
-export async function appendSegment(data: {
-	meeting_id: string;
-	text: string;
-}) {
-	const res = await api('/api/segments', {
-		method: 'POST',
-		body: JSON.stringify(data)
-	});
+export async function appendSegment(data: Pick<Segment, 'id' | 'meeting_id' | 'segment_index' | 'text' | 'created_at'>) {
+	// The same ID and payload are reused even if the response was lost after a successful write.
+	for (let attempt = 0; ; attempt++) {
+		try {
+			const res = await api('/api/segments', { method: 'POST', body: JSON.stringify(data) });
+			return await res.json();
+		} catch (err) {
+			const retryable = err instanceof TypeError || (err instanceof ApiError && [502, 503, 504].includes(err.status));
+			if (!retryable || attempt >= 2) throw err;
+			await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** attempt));
+		}
+	}
+}
+
+export async function previewLiveMap(text: string, previous: MeetingMap, provider: AIProvider, model: string, signal?: AbortSignal): Promise<MeetingMap> {
+	const res = await api('/api/live-map', { method: 'POST', signal, body: JSON.stringify({ text, previous, provider, model }) });
 	return res.json();
 }

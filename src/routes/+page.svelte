@@ -26,7 +26,8 @@
 	onMount(loadMeetings);
 
 	async function loadMeetings() {
-		meetings = await listMeetings();
+		try { meetings = await listMeetings(); }
+		catch (err) { error = `Could not load meetings: ${err instanceof Error ? err.message : String(err)}`; }
 	}
 
 	async function handleSubmit(transcript: string, provider: AIProvider, model: string) {
@@ -37,6 +38,7 @@
 			const { id } = await createMeeting({ transcript, provider, model });
 			for await (const event of analyzeMeeting(id, provider, model)) {
 				if (event && typeof event === 'object' && 'type' in event) {
+					if (event.type === 'error') throw new Error(event.message);
 					if (event.type === 'progress') progress = { processed: event.processed as number, total: event.total as number };
 				}
 			}
@@ -54,19 +56,22 @@
 	}
 
 	async function handleOpen(meeting: Meeting) {
-		const full = await getMeeting(meeting.id);
-		currentMeeting = full.meeting;
-		currentTranscript = full.transcript;
-		view = 'canvas';
+		try {
+			const full = await getMeeting(meeting.id);
+			currentMeeting = full.meeting;
+			currentTranscript = full.transcript;
+			view = 'canvas';
+		} catch (err) { error = `Could not open meeting: ${err instanceof Error ? err.message : String(err)}`; }
 	}
 
 	async function handleDelete(id: string) {
-		await deleteMeeting(id);
-		await loadMeetings();
+		try { await deleteMeeting(id); await loadMeetings(); }
+		catch (err) { error = `Could not delete meeting: ${err instanceof Error ? err.message : String(err)}`; }
 	}
 
-	function handleLiveEnd(meeting: Meeting | null, err?: string) {
+	function handleLiveEnd(meeting: Meeting | null, err?: string, transcript = '') {
 		if (meeting) {
+			currentTranscript = transcript;
 			currentMeeting = meeting;
 			loadMeetings();
 			view = 'canvas';
