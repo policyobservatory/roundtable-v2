@@ -7,6 +7,9 @@
 	"observability": {
 		"enabled": true
 	},
+	"ai": {
+		"binding": "AI"
+	},
 	"assets": {
 		"directory": "dist",
 		"binding": "ASSETS",
@@ -19,13 +22,12 @@
 		"OPENROUTER_MODEL": "openai/gpt-4o-mini",
 		"LLMAPI_MODEL": "gpt-4o-mini",
 		"HF_STT_MODEL": "openai/whisper-large-v3",
-		"DEEPGRAM_STT_MODEL": "nova-2",
+		"DEEPGRAM_STT_MODEL": "@cf/deepgram/nova-3",
 		"ELEVENLABS_STT_MODEL": "scribe_v1",
 		"POLICY_OBSERVATORY_DOCS_URL": "https://api.policyobservatory.org/v1/docs"
 		// Add these in the Cloudflare dashboard as Encrypted Secrets instead of plain vars:
 		// OPENROUTER_API_KEY
 		// HF_TOKEN
-		// DEEPGRAM_API_KEY
 		// ELEVENLABS_API_KEY
 		// CF_ACCOUNT_ID
 		// CF_API_TOKEN

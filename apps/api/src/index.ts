@@ -20,7 +20,7 @@ import { chatCompletion } from '../../../shared/ai';
 import { searchDocuments } from '../../../shared/docs';
 import type { AIProvider, ChatMessage, Meeting, STTProvider } from '../../../shared/types';
 
-interface Env extends AppEnv {
+interface Env extends AppEnv, Pick<Cloudflare.Env, 'AI'> {
 	DB: D1Database;
 	TRANSCRIPTS: R2Bucket;
 	AUDIO: R2Bucket;

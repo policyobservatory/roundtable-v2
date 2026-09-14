@@ -15,6 +15,7 @@
 	type View = 'input' | 'live' | 'canvas';
 
 	let view = $state<View>('input');
+	let liveSTTProvider = $state<STTProvider>('deepgram');
 	let meetings = $state<Meeting[]>([]);
 	let currentMeeting = $state<Meeting | null>(null);
 	let currentTranscript = $state('');
@@ -77,7 +78,7 @@
 </script>
 
 {#if view === 'live'}
-	<LiveMeetingView onEnd={handleLiveEnd} />
+	<LiveMeetingView bind:sttProvider={liveSTTProvider} onEnd={handleLiveEnd} />
 {:else if view === 'canvas' && currentMeeting}
 	<CanvasView meeting={currentMeeting} transcript={currentTranscript} onBack={() => { currentMeeting = null; view = 'input'; loadMeetings(); }} />
 {:else}
@@ -87,7 +88,7 @@
 		{progress}
 		savedMeetings={meetings}
 		onSubmit={handleSubmit}
-		onStartLive={() => view = 'live'}
+		onStartLive={(provider) => { liveSTTProvider = provider; view = 'live'; }}
 		onOpen={handleOpen}
 		onDelete={handleDelete}
 	/>

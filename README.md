@@ -8,7 +8,7 @@ A Cloudflare-native meeting analysis app deployed as a **Cloudflare Worker with 
 - **Database**: [Cloudflare D1](https://developers.cloudflare.com/d1/)
 - **Object storage**: [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - **AI transcript analysis**: OpenRouter, Cloudflare Workers AI REST API, or any OpenAI-compatible LLM API
-- **Speech-to-text**: Deepgram, ElevenLabs, or Hugging Face
+- **Speech-to-text**: Deepgram Nova-3 on Cloudflare Workers AI, ElevenLabs, or Hugging Face
 - **Document chat**: references `api.policyobservatory.org/v1/docs`
 
 ## Transcript input
@@ -56,7 +56,6 @@ Set these with Wrangler:
 ```bash
 wrangler secret put OPENROUTER_API_KEY
 wrangler secret put HF_TOKEN
-wrangler secret put DEEPGRAM_API_KEY
 wrangler secret put ELEVENLABS_API_KEY
 wrangler secret put CF_ACCOUNT_ID
 wrangler secret put CF_API_TOKEN
@@ -75,6 +74,16 @@ wrangler r2 bucket create roundtable-v2-audio
 ```
 
 Paste the D1 database ID into `wrangler.jsonc` under `d1_databases.database_id`.
+
+## Speech-to-text with Cloudflare Workers AI
+
+The default speech option, **Deepgram Nova-3 · Cloudflare**, runs [`@cf/deepgram/nova-3`](https://developers.cloudflare.com/workers-ai/models/nova-3/) through the `AI` Workers AI binding configured in `wrangler.jsonc`. Audio chunks are streamed to the binding with their content type and smart formatting enabled. The existing `/api/stt/deepgram` route is retained, but it no longer calls Deepgram directly.
+
+- No `DEEPGRAM_API_KEY` is required. Nova-3 also does not need `CF_ACCOUNT_ID` or `CF_API_TOKEN`; those remain necessary only for the existing Workers AI **text analysis REST integration**.
+- `DEEPGRAM_STT_MODEL` is now `@cf/deepgram/nova-3`. Remove or update any local/dashboard override still set to `nova-2`.
+- Deploy the updated Worker configuration to activate the `AI` binding. Workers AI usage is charged to your Cloudflare account.
+- Local Nova-3 inference uses Cloudflare rather than an offline model, requires Wrangler authentication, and can incur usage charges. The automated STT tests mock the binding and make no inference calls.
+- The speech option selected on the New Meeting screen carries through to the live meeting.
 
 ## Local development
 

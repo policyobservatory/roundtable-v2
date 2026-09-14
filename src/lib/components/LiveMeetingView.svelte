@@ -10,14 +10,15 @@
 	import Select from '$lib/components/ui/Select.svelte';
 
 	let {
-		onEnd
+		onEnd,
+		sttProvider = $bindable<STTProvider>('deepgram')
 	}: {
 		onEnd: (meeting: Meeting | null, error?: string) => void;
+		sttProvider?: STTProvider;
 	} = $props();
 
 	let selectedModelId = $state(DEFAULT_AI_MODEL.id);
 	const selectedModel = $derived(getAIModel(selectedModelId));
-	let sttProvider = $state<STTProvider>('deepgram');
 
 	let meetingId = $state<string | null>(null);
 	let recording = $state(false);
@@ -126,7 +127,7 @@
 
 				<div>
 					<label for="live-stt-provider" class="mb-1 block text-xs font-medium text-zinc-500">STT provider</label>
-					<Select id="live-stt-provider" bind:value={sttProvider} options={sttOptions} />
+					<Select id="live-stt-provider" bind:value={sttProvider} options={sttOptions} disabled={starting || recording || analyzing} />
 				</div>
 
 				{#if !recording}

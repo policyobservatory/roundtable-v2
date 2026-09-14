@@ -25,7 +25,7 @@
 		progress?: { processed: number; total: number } | null;
 		savedMeetings?: Meeting[];
 		onSubmit: (transcript: string, provider: AIProvider, model: string) => void;
-		onStartLive: () => void;
+		onStartLive: (provider: STTProvider) => void;
 		onOpen: (m: Meeting) => void;
 		onDelete: (id: string) => void;
 	} = $props();
@@ -149,7 +149,7 @@
 							<Select bind:value={sttProvider} options={sttOptions} disabled={isLoading} class="flex-1" />
 						</div>
 
-						<Button variant="outline" size="lg" class="w-full" onclick={onStartLive} disabled={inputDisabled}>
+						<Button variant="outline" size="lg" class="w-full" onclick={() => onStartLive(sttProvider)} disabled={inputDisabled}>
 							<Mic class="h-5 w-5" />
 							Start Live Meeting
 						</Button>

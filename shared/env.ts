@@ -8,14 +8,13 @@ export const appEnvSchema = z.object({
 	OPENROUTER_MODEL: z.string().default('openai/gpt-4o-mini'),
 	LLMAPI_MODEL: z.string().default('gpt-4o-mini'),
 	HF_STT_MODEL: z.string().default('openai/whisper-large-v3'),
-	DEEPGRAM_STT_MODEL: z.string().default('nova-2'),
+	DEEPGRAM_STT_MODEL: z.literal('@cf/deepgram/nova-3').default('@cf/deepgram/nova-3'),
 	ELEVENLABS_STT_MODEL: z.string().default('scribe_v1'),
 	POLICY_OBSERVATORY_DOCS_URL: z.string().url().default('https://api.policyobservatory.org/v1/docs'),
 
 	// Secrets
 	OPENROUTER_API_KEY: z.string().optional(),
 	HF_TOKEN: z.string().optional(),
-	DEEPGRAM_API_KEY: z.string().optional(),
 	ELEVENLABS_API_KEY: z.string().optional(),
 	CF_ACCOUNT_ID: z.string().optional(),
 	CF_API_TOKEN: z.string().optional(),

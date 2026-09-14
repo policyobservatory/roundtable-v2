@@ -1,10 +1,12 @@
 import type { AppEnv } from './env';
 import type { STTProvider } from './types';
 
+type STTEnv = AppEnv & Pick<Cloudflare.Env, 'AI'>;
+
 export async function transcribeAudio(
 	provider: STTProvider,
 	audio: Blob,
-	env: AppEnv
+	env: STTEnv
 ): Promise<{ text: string }> {
 	switch (provider) {
 		case 'huggingface':
@@ -38,26 +40,17 @@ async function huggingFaceSTT(audio: Blob, env: AppEnv): Promise<{ text: string 
 	return { text: data.text ?? '' };
 }
 
-async function deepgramSTT(audio: Blob, env: AppEnv): Promise<{ text: string }> {
-	if (!env.DEEPGRAM_API_KEY) throw new Error('Missing DEEPGRAM_API_KEY');
-	const model = env.DEEPGRAM_STT_MODEL;
-	const res = await fetch(`https://api.deepgram.com/v1/listen?model=${model}&smart_format=true`, {
-		method: 'POST',
-		headers: {
-			Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
-			'Content-Type': audio.type || 'audio/webm'
+async function deepgramSTT(audio: Blob, env: STTEnv): Promise<{ text: string }> {
+	if (!env.AI) throw new Error('Missing Workers AI binding (AI) for Deepgram Nova-3');
+	const data = await env.AI.run(env.DEEPGRAM_STT_MODEL, {
+		audio: {
+			body: audio.stream(),
+			contentType: audio.type || 'audio/webm'
 		},
-		body: await audio.arrayBuffer()
+		smart_format: true
 	});
-	if (!res.ok) {
-		const err = await res.text();
-		throw new Error(`Deepgram error ${res.status}: ${err}`);
-	}
-	const data = (await res.json()) as {
-		results?: { channels?: { alternatives?: { transcript: string }[] }[] }[];
-	};
-	const transcript = data.results?.[0]?.channels?.[0]?.alternatives?.[0]?.transcript ?? '';
-	return { text: transcript };
+	// Workers AI returns the model output directly; results is an object, not an array.
+	return { text: data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? '' };
 }
 
 async function elevenLabsSTT(audio: Blob, env: AppEnv): Promise<{ text: string }> {
