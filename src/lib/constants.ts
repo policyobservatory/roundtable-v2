@@ -42,6 +42,7 @@ export function getAIModel(id: string) {
 
 export const STT_PROVIDERS = [
 	{ value: 'deepgram', label: 'Deepgram Nova-3 · Cloudflare', defaultModel: '@cf/deepgram/nova-3' },
+	{ value: 'whisper', label: 'Whisper Large v3 Turbo · Cloudflare', defaultModel: '@cf/openai/whisper-large-v3-turbo' },
 	{ value: 'elevenlabs', label: 'ElevenLabs', defaultModel: 'scribe_v1' },
 	{ value: 'huggingface', label: 'Hugging Face', defaultModel: 'openai/whisper-large-v3' }
 ] as const;

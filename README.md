@@ -8,7 +8,7 @@ A Cloudflare-native meeting analysis app deployed as a **Cloudflare Worker with 
 - **Database**: [Cloudflare D1](https://developers.cloudflare.com/d1/)
 - **Object storage**: [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - **AI transcript analysis**: OpenRouter, Cloudflare Workers AI REST API, or any OpenAI-compatible LLM API
-- **Speech-to-text**: Deepgram Nova-3 on Cloudflare Workers AI, ElevenLabs, or Hugging Face
+- **Speech-to-text**: Deepgram Nova-3 or Whisper Large v3 Turbo on Cloudflare Workers AI, ElevenLabs, or Hugging Face
 - **Document chat**: references `api.policyobservatory.org/v1/docs`
 
 ## Transcript input
@@ -84,6 +84,8 @@ The default speech option, **Deepgram Nova-3 · Cloudflare**, runs [`@cf/deepgra
 - Deploy the updated Worker configuration to activate the `AI` binding. Workers AI usage is charged to your Cloudflare account.
 - Local Nova-3 inference uses Cloudflare rather than an offline model, requires Wrangler authentication, and can incur usage charges. The automated STT tests mock the binding and make no inference calls.
 - The speech option selected on the New Meeting screen carries through to the live meeting.
+
+**Whisper Large v3 Turbo · Cloudflare** is also available in both speech dropdowns. It runs [`@cf/openai/whisper-large-v3-turbo`](https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/) through the same `AI` binding via `/api/stt/whisper`, using batch transcription of recorded audio chunks. It needs no OpenAI or Hugging Face API key. The existing Hugging Face option remains separate. Deepgram Nova-3 remains the default.
 
 ## Local development
 

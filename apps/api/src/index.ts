@@ -193,7 +193,7 @@ app.post('/api/segments', async (c) => {
 app.post('/api/stt/:provider', async (c) => {
 	const env = await getEnv(c.env);
 	const provider = c.req.param('provider') as STTProvider;
-	const valid: STTProvider[] = ['huggingface', 'deepgram', 'elevenlabs'];
+	const valid: STTProvider[] = ['huggingface', 'deepgram', 'whisper', 'elevenlabs'];
 	if (!valid.includes(provider)) return c.json({ error: 'Invalid STT provider' }, 400);
 	const audio = await c.req.blob();
 	if (!audio || audio.size === 0) return c.json({ error: 'Missing audio' }, 400);

@@ -13,6 +13,8 @@ export async function transcribeAudio(
 			return huggingFaceSTT(audio, env);
 		case 'deepgram':
 			return deepgramSTT(audio, env);
+		case 'whisper':
+			return whisperSTT(audio, env);
 		case 'elevenlabs':
 			return elevenLabsSTT(audio, env);
 		default:
@@ -51,6 +53,18 @@ async function deepgramSTT(audio: Blob, env: STTEnv): Promise<{ text: string }> 
 	});
 	// Workers AI returns the model output directly; results is an object, not an array.
 	return { text: data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? '' };
+}
+
+async function whisperSTT(audio: Blob, env: STTEnv): Promise<{ text: string }> {
+	if (!env.AI) throw new Error('Missing Workers AI binding (AI) for Whisper');
+	const data = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
+		audio: {
+			body: audio.stream(),
+			contentType: audio.type || 'audio/webm'
+		},
+		task: 'transcribe'
+	});
+	return { text: data.text ?? '' };
 }
 
 async function elevenLabsSTT(audio: Blob, env: AppEnv): Promise<{ text: string }> {

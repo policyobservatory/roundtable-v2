@@ -1,5 +1,5 @@
 export type AIProvider = 'workers-ai' | 'openrouter' | 'llmapi';
-export type STTProvider = 'huggingface' | 'deepgram' | 'elevenlabs';
+export type STTProvider = 'huggingface' | 'deepgram' | 'whisper' | 'elevenlabs';
 
 export interface MeetingNode {
 	id: string;
