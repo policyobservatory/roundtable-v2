@@ -7,7 +7,7 @@ A Cloudflare-native meeting analysis app deployed as a **Cloudflare Worker with 
 - **Static assets**: [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)
 - **Database**: [Cloudflare D1](https://developers.cloudflare.com/d1/)
 - **Object storage**: [Cloudflare R2](https://developers.cloudflare.com/r2/)
-- **AI transcript analysis**: OpenRouter, Cloudflare Workers AI REST API, or any OpenAI-compatible LLM API
+- **AI transcript analysis**: GLM-5.3 Flash on Cloudflare Workers AI by default; OpenRouter and OpenAI-compatible LLM APIs remain available
 - **Speech-to-text**: Deepgram Nova-3 or Whisper Large v3 Turbo on Cloudflare Workers AI, ElevenLabs, or Hugging Face
 - **Related documents**: automatic per-card background searches via Cloudflare Queues and Policy Observatory’s `/v1/provisions` API; saved source links in both canvas views
 - **Document chat**: uses the same Policy Observatory search adapter
@@ -24,7 +24,9 @@ Run upload validation tests with `npm test` (Node.js 24+).
 
 ## Configuring the model dropdown
 
-Edit **`AI_MODELS` in `src/lib/constants.ts`** to control the options shown in transcript analysis, live meetings, and chat. Users select a friendly name instead of entering a provider or model ID. The first entry is the default.
+Edit **`AI_MODELS` in `src/lib/constants.ts`** to control the options shown in transcript analysis, live meetings, and chat. Users select a friendly name instead of entering a provider or model ID. The first entry is the default: **GLM-5.3 Flash · Cloudflare** (`@cf/zai-org/glm-5.3-flash`). New transcript analysis and live maps use it unless another model is selected; existing meetings retain their saved provider/model. Cloudflare lists this model as requiring Workers Paid or supported prepaid AI Gateway access.
+
+Curated Cloudflare text models use the existing `AI` binding without separate Cloudflare API credentials. Their responses are normalized across GLM’s `choices[0].message.content` and Llama’s `response` formats. `CF_ACCOUNT_ID` / `CF_API_TOKEN` are only needed for the legacy/custom-model REST fallback.
 
 To add an option, append an entry like this to the array, then rebuild/deploy:
 
@@ -80,7 +82,7 @@ Paste the D1 database ID into `wrangler.jsonc` under `d1_databases.database_id`.
 
 The **Deepgram Nova-3 · Cloudflare** speech option runs [`@cf/deepgram/nova-3`](https://developers.cloudflare.com/workers-ai/models/nova-3/) through the `AI` Workers AI binding configured in `wrangler.jsonc`. Audio chunks are streamed to the binding with their content type and smart formatting enabled. The existing `/api/stt/deepgram` route is retained, but it no longer calls Deepgram directly.
 
-- No `DEEPGRAM_API_KEY` is required. Nova-3 also does not need `CF_ACCOUNT_ID` or `CF_API_TOKEN`; those remain necessary only for the existing Workers AI **text analysis REST integration**.
+- No `DEEPGRAM_API_KEY` is required. Nova-3 also does not need `CF_ACCOUNT_ID` or `CF_API_TOKEN`; those are only needed for the legacy/custom-model text-analysis REST fallback, not the default GLM binding integration.
 - `DEEPGRAM_STT_MODEL` is now `@cf/deepgram/nova-3`. Remove or update any local/dashboard override still set to `nova-2`.
 - Deploy the updated Worker configuration to activate the `AI` binding. Workers AI usage is charged to your Cloudflare account.
 - Local Nova-3 inference uses Cloudflare rather than an offline model, requires Wrangler authentication, and can incur usage charges. The automated STT tests mock the binding and make no inference calls.
