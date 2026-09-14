@@ -3,6 +3,10 @@
 	import { chat } from '$lib/api';
 	import type { AIProvider } from '$shared/types';
 	import { AI_PROVIDERS } from '$lib/constants';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
+	import Textarea from '$lib/components/ui/Textarea.svelte';
 
 	let {
 		meetingId,
@@ -40,20 +44,18 @@
 			loading = false;
 		}
 	}
+
+	const aiOptions = AI_PROVIDERS.map((p) => ({ value: p.value, label: p.label }));
 </script>
 
-<div class="flex w-96 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+<Card class="flex w-96 flex-col border-l border-zinc-200 dark:border-zinc-800">
 	<div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
 		<h3 class="font-semibold">Chat with meeting</h3>
-		<div class="mt-2 flex gap-2">
-			<select bind:value={provider} class="flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-950">
-				{#each AI_PROVIDERS as p}
-					<option value={p.value}>{p.label}</option>
-				{/each}
-			</select>
-			<input bind:value={model} placeholder="model" class="flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+		<div class="mt-3 grid grid-cols-[1fr,1fr] gap-2">
+			<Select bind:value={provider} options={aiOptions} />
+			<input bind:value={model} placeholder="model" class="h-8 w-full rounded-md border border-zinc-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950" />
 		</div>
-		<input bind:value={docQuery} placeholder="Policy document query (optional)" class="mt-2 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+		<input bind:value={docQuery} placeholder="Policy document query (optional)" class="mt-2 h-8 w-full rounded-md border border-zinc-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950" />
 	</div>
 
 	<div class="flex-1 space-y-3 overflow-auto p-4">
@@ -73,10 +75,10 @@
 
 	<form onsubmit={(e) => { e.preventDefault(); submit(); }} class="border-t border-zinc-200 p-3 dark:border-zinc-800">
 		<div class="flex gap-2">
-			<input bind:value={input} placeholder="Ask something..." class="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
-			<button type="submit" disabled={loading} class="rounded-lg bg-zinc-900 px-3 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900">
+			<Textarea bind:value={input} placeholder="Ask something..." rows={1} class="min-h-0 flex-1 resize-none" />
+			<Button type="submit" disabled={loading} size="icon" class="shrink-0">
 				<Send class="h-4 w-4" />
-			</button>
+			</Button>
 		</div>
 	</form>
-</div>
+</Card>

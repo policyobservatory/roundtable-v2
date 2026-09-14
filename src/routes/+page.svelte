@@ -28,12 +28,12 @@
 		meetings = await listMeetings();
 	}
 
-	async function handleSubmit(transcript: string, title: string, provider: AIProvider, model: string) {
+	async function handleSubmit(transcript: string, provider: AIProvider, model: string) {
 		isLoading = true;
 		error = '';
 		progress = null;
 		try {
-			const { id } = await createMeeting({ title, transcript, provider, model });
+			const { id } = await createMeeting({ transcript, provider, model });
 			for await (const event of analyzeMeeting(id, provider, model)) {
 				if (event && typeof event === 'object' && 'type' in event) {
 					if (event.type === 'progress') progress = { processed: event.processed as number, total: event.total as number };
