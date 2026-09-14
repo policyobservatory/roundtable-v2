@@ -9,7 +9,8 @@ A Cloudflare-native meeting analysis app deployed as a **Cloudflare Worker with 
 - **Object storage**: [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - **AI transcript analysis**: OpenRouter, Cloudflare Workers AI REST API, or any OpenAI-compatible LLM API
 - **Speech-to-text**: Deepgram Nova-3 or Whisper Large v3 Turbo on Cloudflare Workers AI, ElevenLabs, or Hugging Face
-- **Document chat**: references `api.policyobservatory.org/v1/docs`
+- **Related documents**: automatic per-card background searches via Cloudflare Queues and Policy Observatory’s `/v1/provisions` API; saved source links in both canvas views
+- **Document chat**: uses the same Policy Observatory search adapter
 
 ## Transcript input
 
@@ -77,20 +78,39 @@ Paste the D1 database ID into `wrangler.jsonc` under `d1_databases.database_id`.
 
 ## Speech-to-text with Cloudflare Workers AI
 
-The default speech option, **Deepgram Nova-3 · Cloudflare**, runs [`@cf/deepgram/nova-3`](https://developers.cloudflare.com/workers-ai/models/nova-3/) through the `AI` Workers AI binding configured in `wrangler.jsonc`. Audio chunks are streamed to the binding with their content type and smart formatting enabled. The existing `/api/stt/deepgram` route is retained, but it no longer calls Deepgram directly.
+The **Deepgram Nova-3 · Cloudflare** speech option runs [`@cf/deepgram/nova-3`](https://developers.cloudflare.com/workers-ai/models/nova-3/) through the `AI` Workers AI binding configured in `wrangler.jsonc`. Audio chunks are streamed to the binding with their content type and smart formatting enabled. The existing `/api/stt/deepgram` route is retained, but it no longer calls Deepgram directly.
 
 - No `DEEPGRAM_API_KEY` is required. Nova-3 also does not need `CF_ACCOUNT_ID` or `CF_API_TOKEN`; those remain necessary only for the existing Workers AI **text analysis REST integration**.
 - `DEEPGRAM_STT_MODEL` is now `@cf/deepgram/nova-3`. Remove or update any local/dashboard override still set to `nova-2`.
 - Deploy the updated Worker configuration to activate the `AI` binding. Workers AI usage is charged to your Cloudflare account.
 - Local Nova-3 inference uses Cloudflare rather than an offline model, requires Wrangler authentication, and can incur usage charges. The automated STT tests mock the binding and make no inference calls.
-- The speech option selected on the New Meeting screen carries through to the live meeting.
+- The speech model and conversation language selected on the New Meeting screen carry through to the live meeting.
 
-**Whisper Large v3 Turbo · Cloudflare** is also available in both speech dropdowns. It runs [`@cf/openai/whisper-large-v3-turbo`](https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/) through the same `AI` binding via `/api/stt/whisper`, using batch transcription of recorded audio chunks. It needs no OpenAI or Hugging Face API key. The existing Hugging Face option remains separate. Deepgram Nova-3 remains the default.
+**Whisper Large v3 Turbo · Cloudflare** is the default speech model. It runs [`@cf/openai/whisper-large-v3-turbo`](https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/) through the same `AI` binding via `/api/stt/whisper`, using batch transcription of recorded audio chunks. It needs no OpenAI or Hugging Face API key. The existing Hugging Face option remains separate.
+
+### Filipino + English / Taglish
+
+New meetings default to **Filipino + English (Taglish)** with Cloudflare Whisper. Configure presets/defaults in `shared/speech-settings.ts`.
+
+- Whisper receives `task: 'transcribe'`, a Tagalog (`tl`) hint for the Taglish/Tagalog presets, voice activity detection, and `condition_on_previous_text: false` to reduce silent/repetitive hallucinations. No example transcript or generated translation is inserted.
+- **English** sends `en`; **Auto-detect language** omits the Whisper language hint. Try Auto-detect if a mostly English recording performs worse with the Tagalog hint. Code-switching quality is not guaranteed by a single-language hint.
+- Nova-3 supports explicit `en` / `tl` or dominant-language detection. Its [documented multilingual code-switching set](https://developers.deepgram.com/docs/models-languages-overview) does **not** include Tagalog, so it is not offered for the Taglish preset. Hugging Face/ElevenLabs remain available under Auto-detect; explicit hints for those adapters are not implemented.
+- Live capture now uses approximately **12-second independent clips** rather than five seconds, providing more acoustic context at the cost of latency. Expect each clip plus inference time before text appears. This remains batch transcription, not real-time partial words; chunk boundaries can still split speech.
+- `/api/stt/:provider?language=fil-en|tl|en|auto` validates presets and model compatibility. Omitting the query retains Auto-detect behavior for older clients.
+- The tests verify request settings and preservation of returned mixed-language text, not actual recognition quality. Evaluate a representative consented Filipino/English recording before claiming an accuracy improvement. Existing bad transcriptions cannot be repaired by re-analyzing their text; they need correction or new transcription from the original audio.
+
+## Automatic related documents
+
+Cards automatically queue background searches without blocking transcription. Matching provision excerpts, bill status, and original-document links appear in either canvas view only when available. Otherwise the card stays unchanged: no loading badge, empty-result message, error banner, or retry prompt. Empty results are cached and are not retried. Accepted work survives leaving the page; saved meetings reuse persisted results.
+
+**Setup:** this feature needs `migrations/0002_document_jobs.sql`, the `roundtable-v2-documents` queue, and `roundtable-v2-documents-dead`. See [background reference architecture, setup and recovery](docs/document-references.md).
+
+No Policy Observatory API key is needed currently. `/v1/docs` is the Swagger documentation page; the adapter now correctly searches `/v1/provisions?query=…&limit=5`. **During implementation, that semantic-search endpoint returned HTTP 500 even though health/listing worked.** Temporary failures have bounded internal retries and remain silent in the meeting UI; the upstream issue must be resolved before real matches can be verified.
 
 ## Transcribing browser tab audio
 
-1. Open **Start Live Meeting** and select **Browser tab audio** under **Audio source**.
-2. Choose a speech model (Cloudflare Nova-3, Cloudflare Whisper, or another configured provider).
+1. On the main screen, click **Share browser tab audio** under **Start a live meeting**. The next screen will have **Browser tab audio** selected. Alternatively, choose **Use microphone**; you can still change the source in live-meeting setup.
+2. Choose the conversation language and speech model. The Taglish preset selects Cloudflare Whisper; switch language presets to see other compatible providers.
 3. Click **Share tab & start**. In the browser picker, select the tab playing the meeting and enable **Share tab audio**.
 4. Keep that tab playing. The **live transcript and conversation graph** appear side by side. Recognized text is shown immediately with a Pending save/Saved label. After enough speech arrives, the graph updates roughly every 10 seconds with new topics, labeled connections, decisions, actions, and concerns.
 5. Click **End meeting**, or use the browser's **Stop sharing** control. Roundtable finishes the last audio chunk and pending saves before final analysis. Review the map, then choose **Save & exit**.
@@ -98,6 +118,15 @@ The default speech option, **Deepgram Nova-3 · Cloudflare**, runs [`@cf/deepgra
 Desktop Chrome or Edge over HTTPS is recommended; tab audio availability depends on browser and operating system. Selecting a window/screen or leaving audio sharing unchecked may provide no audio, in which case Roundtable explains how to retry. Cancelling the picker does not switch to microphone capture.
 
 Only the shared audio track is recorded and sent to the speech provider. The browser also grants a video track for tab sharing, but Roundtable does not record or upload video. Microphone audio is **not mixed in**: to capture your microphone instead, choose **Microphone**. Let participants know before transcribing, and avoid sharing a tab that contains unrelated/private audio. Leaving the live meeting stops capture and discards audio that has not yet been submitted; use **End meeting** to finish and save normally. Recognized text is backed up in this browser until **Save & exit**; reopening Live Meeting offers recovery. When browser storage is blocked/full, a warning is shown. **Download transcript** works even if D1 is unavailable.
+
+### Two canvas views
+
+The toolbar offers **Live graph** and **Organized canvas** both during recording and in saved meetings:
+
+- **Live graph:** one top-to-bottom lane in topic discovery order. Existing positions stay stable as topics arrive. While recording, **Follow newest topic** keeps new topics visible; panning or selecting a topic pauses following.
+- **Organized canvas:** compact cards ranked by directed connections, with branches beside each other in at most three columns. Sequential chains still flow straight down rather than wrapping into a snake. Final review and saved meetings default to this layout.
+- Both use the same map and preserve topic details, decisions, actions and concerns. Switching views does not call an AI model, rewrite the transcript, merge topics, or remove information. Dashed return arrows represent cycles/back-references rather than reversing the main flow.
+- Saved graph views are snapshots, not a replay of historical live updates. Dense edges can still overlap; repeated topics across final-analysis chunks are not globally deduplicated.
 
 ### Save and analysis recovery
 
@@ -125,7 +154,10 @@ npm run dev
 ## Deploy
 
 ```bash
-# Initialize a new production database before deploying; safe on existing v2 tables.
+# Create the document queues once (skip if they already exist).
+npx wrangler queues create roundtable-v2-documents
+npx wrangler queues create roundtable-v2-documents-dead
+# Apply all pending migrations, including 0002_document_jobs.sql, before deploying.
 npx wrangler d1 migrations apply roundtable-v2-db --remote
 npm run build
 npx wrangler deploy --keep-vars

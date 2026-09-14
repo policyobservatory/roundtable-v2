@@ -8,12 +8,12 @@ This is a source-level comparison, not a claim that every original feature has b
 | --- | --- | --- | --- |
 | Transcript beside a live canvas | Yes, 30% transcript / remaining graph | No; setup card and transcript list, then post-meeting list | Restored split view; stacks vertically on small screens |
 | Progressive topic analysis | ~10s, first 100 / subsequent 150 new characters | None during recording | Restored thresholds and cadence, one request at a time; incremental text and bounded recent-topic context |
-| Directed, labeled topic graph | SVG links, multi-column card layout | Indented hierarchy; edges ignored | Graph with directed/labeled links, deterministic grid positions |
+| Directed, labeled topic graph | SVG links, multi-column card layout | Indented hierarchy; edges ignored | Switchable downward live graph and compact top-to-bottom organized canvas; directed/labeled links retained |
 | Pan, zoom, fit and topic navigation | Yes | None | Drag/keyboard pan, zoom buttons, fit, topic-navigation strip |
 | Decisions / actions / concerns | Structured arrays with detail sections | Summary strings only | Structured arrays in new analyses; selectable topic details |
 | Per-node change history | Timestamped updates and summary-change indicators | No | **Not yet ported** |
 | Clarifying questions | Separate periodically refreshed panel | No | **Not yet ported** |
-| Per-topic document references | Automatic queries, source links and match indicators | Only document-grounded chat | **Not yet ported**; existing chat is not equivalent |
+| Per-topic document references | Automatic queries, source links and match indicators | Only document-grounded chat | Background per-card searches with persisted excerpts/source links in both layouts; unmatched/failed lookups remain invisible, without retry prompts; no generated reference answer or confidence score |
 | Transcript auto-follow | Yes | No | Restored; pauses when scrolling up |
 | Speaker labels and partial transcripts | ElevenLabs realtime path provides these; batch Whisper does not | Batch text only | **Still batch text only**; timestamps are not speaker diarization |
 | Microphone / tab audio | Microphone plus Hugging Face tab path | Both sources supported through all STT choices | Retained; one capture grant, audio-only recorder, cleanup on leave |
@@ -62,10 +62,15 @@ Changes:
 - Failed finalization stays on the transcript/canvas screen with retry controls. Success does not discard the transcript before review.
 - Streaming writes are awaited; error responses no longer include server stack traces.
 
+## Background references
+
+See [document-references.md](document-references.md) for the queue/outbox design, migrations, resource setup, and known upstream HTTP 500 during semantic search. Retrieval uses the actual Policy Observatory provisions API, not the `/v1/docs` Swagger page. Positive real-search results still need validation after the upstream error is resolved.
+
 ## Limits / follow-up work
 
-- This is not yet full original parity: clarifying questions, automatic document references, change history, partial text and speaker diarization remain outstanding.
-- Layout is a deterministic three-column graph, not an exact port of the original layered edge-routing/auto-height algorithm. Dense or backward connections may overlap.
+- This is not yet full original parity: clarifying questions, change history, partial text and speaker diarization remain outstanding. Automatic document retrieval is implemented; generated reference answers and match confidence are not.
+- Layout has two deterministic modes: a stable downward topic-order lane and a compact layered canvas with up to three branches per row. This is not an exact port of the original layout; dense or returning connections may overlap. Both views use the same map without semantic deduplication, and saved graphs are snapshots rather than historical replays.
+- New speech presets default to Whisper with a Tagalog hint for Filipino/English and 12-second clips. VAD and language hints are implemented, but representative mixed-language audio still needs an accuracy evaluation; changing analysis cannot repair misrecognized source text.
 - Preview analysis uses the latest 40 topics as model context and merges updates into the full client map. Final analysis still uses the v2 chunk pipeline; it can split recurring topics between chunks rather than globally deduplicating them.
 - Drafts contain sensitive transcript text in browser localStorage. They are cleared on Save & exit / Discard draft. Storage availability/quota and browser clearing affect recovery; download is the fallback.
 - A lost STT chunk cannot be recreated from a text-only draft. Saving retries recover recognized text, not unavailable audio.
