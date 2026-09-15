@@ -21,7 +21,6 @@
 
 	let messages = $state<{ role: string; content: string }[]>([]);
 	let input = $state('');
-	let docQuery = $state('');
 	let loading = $state(false);
 	let selectedModelId = $state<string | null>(null);
 	// Older meetings may reference a model no longer offered in the dropdown.
@@ -30,7 +29,7 @@
 		: getAIModel(selectedModelId));
 
 	async function submit() {
-		if (!input.trim()) return;
+		if (loading || !input.trim()) return;
 		const userMsg = input.trim();
 		messages = [...messages, { role: 'user', content: userMsg }];
 		input = '';
@@ -41,7 +40,7 @@
 				provider: selectedModel.provider,
 				model: selectedModel.model,
 				meeting_id: meetingId,
-				doc_query: docQuery.trim() || userMsg
+				doc_query: userMsg
 			});
 			messages = [...messages, { role: 'assistant', content: reply.content }];
 		} catch (err: unknown) {
@@ -59,12 +58,11 @@
 		<div class="mt-3">
 			<ModelSelect id="chat-ai-model" value={selectedModel.id} onchange={(id) => selectedModelId = id} disabled={loading} />
 		</div>
-		<input bind:value={docQuery} placeholder="Policy document query (optional)" class="mt-2 h-8 w-full rounded-md border border-zinc-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950" />
 	</div>
 
 	<div class="flex-1 space-y-3 overflow-auto p-4">
 		{#each messages as msg}
-			<div class={msg.role === 'user' ? 'ml-6 text-right' : 'mr-6'}>
+			<div data-message-role={msg.role} class="mr-6 text-left">
 				<div class={`inline-block max-w-full rounded-lg px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'bg-zinc-100 dark:bg-zinc-800'}`}>
 					{#if msg.role === 'assistant'}
 						<Markdown content={msg.content} />
@@ -83,9 +81,14 @@
 
 	<form onsubmit={(e) => { e.preventDefault(); submit(); }} class="border-t border-zinc-200 p-3 dark:border-zinc-800">
 		<div class="flex gap-2">
-			<Textarea bind:value={input} placeholder="Ask something..." rows={1} class="min-h-0 flex-1 resize-none" />
-			<Button type="submit" disabled={loading} size="icon" class="shrink-0">
-				<Send class="h-4 w-4" />
+			<Textarea bind:value={input} placeholder="Ask something..." rows={1} class="min-h-0 flex-1 resize-none" onkeydown={(event) => {
+				if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+					event.preventDefault();
+					if (!event.repeat) void submit();
+				}
+			}} />
+			<Button type="submit" disabled={loading || !input.trim()} size="icon" class="shrink-0" title="Send message">
+				<Send class="h-4 w-4" /><span class="sr-only">Send message</span>
 			</Button>
 		</div>
 	</form>

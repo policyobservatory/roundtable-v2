@@ -17,6 +17,8 @@ const jobs = new Map();
 let submissions = 0;
 let holdReferences = true;
 let includeTimestamps = true;
+const chatRequests = [];
+let releaseChat;
 const transcriptSegments = [
  { id: 's1', segment_index: 0, text: 'Privacy discussion', created_at: '2026-09-14T09:00:10.000Z' },
  { id: 's2', segment_index: 1, text: 'Budget discussion', created_at: '2026-09-14T09:00:20.000Z' }
@@ -26,7 +28,12 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const json = (data) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)); };
   if (url.pathname === '/api/meetings') return json([meeting]);
-  if (url.pathname === '/api/chat') return json({ content: '# Meeting summary\n\n**Approved** the budget.\n\n- Assign an owner\n- Follow up\n\n```js\nconst budget = 100;\n```\n\n| Topic | Owner |\n| --- | --- |\n| Budget | Alex |\n\n[Policy](https://example.org)\n\n<script>window.markdownInjected = true</script>\n\n[unsafe](javascript:alert%281%29)' });
+  if (url.pathname === '/api/chat') {
+   let text = ''; for await (const chunk of req) text += chunk;
+   chatRequests.push(JSON.parse(text));
+   await new Promise(resolve => { releaseChat = resolve; });
+   return json({ content: '# Meeting summary\n\n**Approved** the budget.\n\n- Assign an owner\n- Follow up\n\n```js\nconst budget = 100;\n```\n\n| Topic | Owner |\n| --- | --- |\n| Budget | Alex |\n\n[Policy](https://example.org)\n\n<script>window.markdownInjected = true</script>\n\n[unsafe](javascript:alert%281%29)' });
+  }
   if (url.pathname.endsWith('/references')) {
    if (req.method === 'POST') {
     submissions++;
@@ -93,8 +100,35 @@ try {
  await waitFor(`document.querySelectorAll('[aria-label="Timestamped transcript"] time').length === 2`);
  await click('Chat');
  await waitFor(`document.querySelector('textarea[placeholder="Ask something..."]')`);
- await evaluate(`(() => { const input = document.querySelector('textarea[placeholder="Ask something..."]'); input.value = 'Summarize the meeting'; input.dispatchEvent(new Event('input', { bubbles: true })); input.closest('form').requestSubmit(); })()`);
+ assert.equal(await evaluate(`!!document.querySelector('input[placeholder="Policy document query (optional)"]')`), false);
+ await evaluate(`(() => { const model = document.querySelector('#chat-ai-model'); model.value = 'workers-glm-5-3-flash'; model.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+ assert.equal(await evaluate(`!!document.querySelector('#chat-ai-model-description')`), false, 'Removed model note leaves no empty paragraph');
+ const inputSelector = `document.querySelector('textarea[placeholder="Ask something..."]')`;
+ const setInput = text => evaluate(`(() => { const input = ${inputSelector}; input.value = ${JSON.stringify(text)}; input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); })()`);
+ await setInput('Summarize the meeting');
+ await evaluate(`${inputSelector}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })); ${inputSelector}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true }));`);
+ assert.equal(chatRequests.length, 0, 'Composition and held Enter do not submit');
+ await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: 8, text: '\r' });
+ await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: 8 });
+ assert.equal(await evaluate(`${inputSelector}.value.includes('\\n')`), true, 'Shift+Enter inserts a newline');
+ assert.equal(chatRequests.length, 0);
+ await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+ await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+ await waitFor(`document.querySelector('[data-message-role="user"]')`);
+ for (let i = 0; i < 100 && !releaseChat; i++) await new Promise(r => setTimeout(r, 20));
+ assert.equal(chatRequests.length, 1, 'Enter sends one message');
+ assert.equal(chatRequests[0].doc_query, 'Summarize the meeting', 'Automatic document lookup still uses the question');
+ await setInput('Draft while waiting');
+ await evaluate(`${inputSelector}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); ${inputSelector}.closest('form').requestSubmit();`);
+ assert.equal(await evaluate(`${inputSelector}.value`), 'Draft while waiting', 'Sending is guarded while a response is pending');
+ assert.equal(chatRequests.length, 1);
+ releaseChat();
  await waitFor(`document.querySelector('.markdown h1')?.textContent === 'Meeting summary'`);
+ assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-message-role="user"]')).textAlign`), 'left');
+ assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-message-role="user"]')).marginLeft`), '0px');
+ await setInput('   ');
+ await evaluate(`${inputSelector}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));`);
+ assert.equal(chatRequests.length, 1, 'Whitespace-only messages are not sent');
  assert.equal(await evaluate(`document.querySelector('.markdown strong')?.textContent`), 'Approved');
  assert.equal(await evaluate(`document.querySelectorAll('.markdown ul li').length`), 2);
  assert.equal(await evaluate(`!!document.querySelector('.markdown pre code') && !!document.querySelector('.markdown table')`), true);
@@ -105,8 +139,15 @@ try {
  const assertQuiet = async () => assert.equal(await evaluate(`/Document search|No matching documents|Waiting to queue|Searching Policy Observatory|Document service unavailable|Retry document search|HTTP 500/.test(document.body.innerText)`), false);
  await assertQuiet();
  assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Related policy documents"], [data-document-links]').length`), 0, 'Pending searches have no document heading or container');
+ const emptyHeights = await evaluate(`Object.fromEntries(Array.from(document.querySelectorAll('[data-topic-card]')).map(c => [c.dataset.topicCard, parseFloat(c.style.height)]))`);
+ assert.ok(Object.values(emptyHeights).every(h => h <= 110), 'Short cards fit their content instead of reserving whitespace');
+ assert.equal(await evaluate(`Array.from(document.querySelectorAll('[data-topic-card]')).every(c => Math.abs(parseFloat(c.style.height) - c.querySelector('button').offsetHeight - 2) < 1)`), true, 'Measured card height matches topic content plus border');
  holdReferences = false;
  await waitFor(`document.querySelector('[data-topic-card="budget"] a')`);
+ const fetchedHeights = await evaluate(`Object.fromEntries(Array.from(document.querySelectorAll('[data-topic-card]')).map(c => [c.dataset.topicCard, parseFloat(c.style.height)]))`);
+ assert.equal(fetchedHeights.privacy, emptyHeights.privacy);
+ assert.equal(fetchedHeights.general, emptyHeights.general);
+ assert.ok(fetchedHeights.budget > emptyHeights.budget && fetchedHeights.budget - emptyHeights.budget < 132, 'Only the matched card grows to fit its document list');
  assert.equal(await evaluate(`document.querySelector('[data-topic-card="budget"] a').textContent`), docs[0].title, 'Documents are listed directly on topic cards');
  assert.equal(await evaluate(`document.querySelector('[data-topic-card="budget"] a').getAttribute('href')`), docs[0].source_url);
  await assertQuiet();
@@ -183,7 +224,7 @@ try {
  await waitFor(`document.querySelector('#live-audio-source')?.value === 'tab'`);
  assert.equal(await evaluate(`document.querySelector('#live-speech-language').value`), 'fil-en');
  assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
- console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'hidden pending/failed/empty document sections', 'document lists on cards', 'timestamp/plain-text transcript toggle', 'legacy transcript fallback', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
+ console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'left-aligned user chat', 'Enter sends and Shift+Enter inserts newline', 'no duplicate or IME sends', 'removed note and query box', 'compact cards without document whitespace', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'hidden pending/failed/empty document sections', 'document lists on cards', 'timestamp/plain-text transcript toggle', 'legacy transcript fallback', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
 } finally {
  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
  await new Promise((r) => setTimeout(r, 500));

@@ -25,7 +25,7 @@
 			{id}
 			value={selected.id}
 			{disabled}
-			aria-describedby={`${id}-description`}
+			aria-describedby={selected.description ? `${id}-description` : undefined}
 			onchange={(event) => {
 				value = event.currentTarget.value;
 				onchange?.(value);
@@ -38,5 +38,5 @@
 		</select>
 		<ChevronDown aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
 	</div>
-	<p id={`${id}-description`} class="text-xs leading-relaxed text-zinc-500">{selected.description}</p>
+	{#if selected.description}<p id={`${id}-description`} class="text-xs leading-relaxed text-zinc-500">{selected.description}</p>{/if}
 </div>

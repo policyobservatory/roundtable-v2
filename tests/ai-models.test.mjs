@@ -13,12 +13,16 @@ test('the first configured model is the default', () => {
 test('dropdown entries have unique IDs and complete provider configuration', () => {
 	assert.equal(new Set(AI_MODELS.map((option) => option.id)).size, AI_MODELS.length);
 	for (const option of AI_MODELS) {
-		for (const field of ['id', 'label', 'model', 'description']) {
+		for (const field of ['id', 'label', 'model']) {
 			assert.ok(option[field].trim(), `${option.id}: ${field} must not be empty`);
 		}
 		assert.ok(['openrouter', 'workers-ai', 'llmapi'].includes(option.provider));
 		assert.equal(getAIModel(option.id), option);
 	}
+});
+
+test('the default model does not display the paid-access note', () => {
+	assert.equal(DEFAULT_AI_MODEL.description, '');
 });
 
 test('unknown or removed IDs fall back to an offered model', () => {

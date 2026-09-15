@@ -17,7 +17,7 @@ export const AI_MODELS = [
 		label: 'GLM-5.3 Flash · Cloudflare',
 		provider: 'workers-ai',
 		model: DEFAULT_WORKERS_AI_MODEL,
-		description: 'The default meeting-analysis model on Cloudflare Workers AI. Requires paid access.'
+		description: ''
 	},
 	{
 		id: 'openrouter-gpt-4o-mini',
