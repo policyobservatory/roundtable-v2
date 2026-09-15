@@ -4,6 +4,7 @@
 	import type { AIProvider } from '$shared/types';
 	import { AI_MODELS, DEFAULT_AI_MODEL, getAIModel } from '$lib/constants';
 	import ModelSelect from '$lib/components/ModelSelect.svelte';
+	import Markdown from '$lib/components/Markdown.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Textarea from '$lib/components/ui/Textarea.svelte';
@@ -52,7 +53,7 @@
 
 </script>
 
-<Card class="flex w-96 flex-col border-l border-zinc-200 dark:border-zinc-800">
+<Card class="flex min-h-0 w-96 max-w-full shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
 	<div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
 		<h3 class="font-semibold">Chat with meeting</h3>
 		<div class="mt-3">
@@ -64,8 +65,12 @@
 	<div class="flex-1 space-y-3 overflow-auto p-4">
 		{#each messages as msg}
 			<div class={msg.role === 'user' ? 'ml-6 text-right' : 'mr-6'}>
-				<div class={`inline-block rounded-lg px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'bg-zinc-100 dark:bg-zinc-800'}`}>
-					{msg.content}
+				<div class={`inline-block max-w-full rounded-lg px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'bg-zinc-100 dark:bg-zinc-800'}`}>
+					{#if msg.role === 'assistant'}
+						<Markdown content={msg.content} />
+					{:else}
+						<span class="whitespace-pre-wrap break-words">{msg.content}</span>
+					{/if}
 				</div>
 			</div>
 		{/each}
