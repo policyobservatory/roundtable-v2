@@ -27,8 +27,22 @@
 		return () => controller.dispose();
 	});
 	$effect(() => { documentController?.update(flattenMap(map).nodes); });
-	const documentSpace = $derived(meetingId ? 132 : 0);
-	const graph = $derived(layoutGraph(map, view, documentSpace));
+	let topicHeights = $state<Record<string, number>>({});
+	const graph = $derived(layoutGraph(map, view, (node) => {
+		const count = meetingId ? linkedDocuments(references[referenceRevision(node)]).length : 0;
+		return count ? 48 + Math.min(count, 3) * 22 : 0;
+	}, (node) => topicHeights[node.id]));
+	function measureTopic(element: HTMLButtonElement, id: string) {
+		const measure = () => {
+			// offsetHeight is unscaled, so zooming never changes the graph's geometry.
+			const height = element.offsetHeight + 2; // Include the outer card border.
+			if (height > 2 && topicHeights[id] !== height) topicHeights[id] = height;
+		};
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		measure();
+		return { destroy: () => observer.disconnect() };
+	}
 	let followLatest = $state(true);
 	let scale = $state(0.8);
 	let x = $state(0);
@@ -42,7 +56,7 @@
 	let lastX = 0;
 	let lastY = 0;
 	let fittedView: GraphView | null = null;
-	let lastFollowedId = $state<string | null>(null);
+	let lastFollowedPosition = $state<string | null>(null);
 	const markerId = $props.id();
 
 	function fit() {
@@ -56,16 +70,17 @@
 	});
 	$effect(() => {
 		const latest = graph.nodes.at(-1);
-		if (view === 'live' && followLatest && viewport && latest && lastFollowedId !== latest.node.id) {
-			lastFollowedId = latest.node.id;
+		const position = latest ? `${latest.node.id}:${latest.x}:${latest.y}:${latest.height}` : null;
+		if (view === 'live' && followLatest && viewport && latest && lastFollowedPosition !== position) {
+			lastFollowedPosition = position;
 			untrack(() => panTo(latest));
 		}
 	});
-	function changeView(next: GraphView) { view = next; lastFollowedId = null; }
+	function changeView(next: GraphView) { view = next; lastFollowedPosition = null; }
 	function panTo(item: typeof graph.nodes[number]) {
 		if (!viewport) return;
 		x = viewport.clientWidth / 2 - (item.x + CARD_WIDTH / 2) * scale;
-		y = viewport.clientHeight / 2 - (item.y + graph.cardHeight / 2) * scale;
+		y = viewport.clientHeight / 2 - (item.y + item.height / 2) * scale;
 	}
 	function zoom(delta: number, anchorX = (viewport?.clientWidth ?? 0) / 2, anchorY = (viewport?.clientHeight ?? 0) / 2) {
 		const next = Math.max(0.2, Math.min(2, scale + delta));
@@ -132,7 +147,7 @@
 		<span>{view === 'organized' ? 'Compact top-to-bottom branches · all topics retained' : 'Top-to-bottom topic discovery order'}{!live ? ' · snapshot, not a replay' : ''}. Dashed arrows return to an earlier topic.</span>
 		{#if view === 'live'}<label class="flex items-center gap-1"><input type="checkbox" checked={followLatest} onchange={(event) => {
 			followLatest = event.currentTarget.checked;
-			lastFollowedId = null;
+			lastFollowedPosition = null;
 			if (followLatest) selectedId = null;
 		}} /> Follow latest topic</label>{/if}
 	</div>
@@ -187,16 +202,15 @@
 							{#if edge.label}<text x={edge.x} y={edge.y} text-anchor="middle" class="fill-zinc-600 text-[10px] dark:fill-zinc-300"><title>{edge.label}</title>{edge.label.length > 28 ? edge.label.slice(0, 27) + '…' : edge.label}</text>{/if}
 						{/each}
 					</svg>
-					{#each graph.nodes as { node, x: nx, y: ny } (node.id)}
-						{@const hasDocuments = !!meetingId && linkedDocuments(references[referenceRevision(node)]).length > 0}
+					{#each graph.nodes as { node, x: nx, y: ny, height, documentSpace } (node.id)}
 						<div data-topic-card={node.id} class="absolute overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-lg dark:bg-zinc-900 {selectedId === node.id ? 'border-blue-500' : 'border-zinc-200 dark:border-zinc-700'}"
-							style:left={`${nx}px`} style:top={`${ny}px`} style:width={`${CARD_WIDTH}px`} style:height={`${graph.cardHeight}px`}>
-							<button class="block w-full cursor-inherit overflow-hidden p-4 text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500" style:height={`${graph.cardHeight - (hasDocuments ? documentSpace : 0)}px`} onclick={() => { selectedId = node.id; followLatest = false; }}>
+							style:left={`${nx}px`} style:top={`${ny}px`} style:width={`${CARD_WIDTH}px`} style:height={`${height}px`}>
+							<button use:measureTopic={node.id} class="flex w-full cursor-inherit flex-col items-start overflow-hidden p-3 text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500" onclick={() => { selectedId = node.id; followLatest = false; }}>
 								<h3 class="line-clamp-2 text-sm font-semibold">{node.title}</h3>
 								<p class="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400 {view === 'organized' ? 'line-clamp-2' : 'line-clamp-3'}">{node.summary}</p>
-								<p class="mt-3 text-[10px] text-blue-600 dark:text-blue-400">{node.decisions?.length ?? 0} decisions · {node.actions?.length ?? 0} actions · {node.concerns?.length ?? 0} concerns</p>
+								<p class="mt-2 text-[10px] text-blue-600 dark:text-blue-400">{node.decisions?.length ?? 0} decisions · {node.actions?.length ?? 0} actions · {node.concerns?.length ?? 0} concerns</p>
 							</button>
-							{#if hasDocuments}<div data-document-links class="cursor-auto overflow-y-auto overscroll-contain border-t border-zinc-200 p-3 dark:border-zinc-700" style:height={`${documentSpace}px`}>
+							{#if documentSpace}<div data-document-links class="cursor-auto overflow-y-auto overscroll-contain border-t border-zinc-200 p-3 dark:border-zinc-700" style:height={`${documentSpace}px`}>
 								<TopicReferences reference={references[referenceRevision(node)]} compact />
 							</div>{/if}
 						</div>

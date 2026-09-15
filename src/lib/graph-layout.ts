@@ -1,20 +1,20 @@
-import type { MeetingMap } from '../../shared/types';
+import type { MeetingMap, MeetingNode } from '../../shared/types';
 import { flattenMap } from '../../shared/meeting-map.ts';
 
 export const CARD_WIDTH = 280;
-export const CARD_HEIGHT = 212;
-export const COMPACT_CARD_HEIGHT = 176;
+export const CARD_HEIGHT = 176;
+export const COMPACT_CARD_HEIGHT = 156;
 export type GraphView = 'live' | 'organized';
 const PADDING = 60;
 const COLUMN_GAP = 90;
 const ROW_GAP = 110;
 
-/** Live order never snakes or reflows existing topics. Organized view ranks dependencies
+/** Live order never snakes; appending topics preserves existing positions. Organized view ranks dependencies
  * top-to-bottom, packing branches into at most three columns. Cycles are broken only for
  * positioning: every real edge is retained, with return links routed around the cards. */
-export function layoutGraph(map: MeetingMap, view: GraphView = 'live', documentSpace = 0) {
+export function layoutGraph(map: MeetingMap, view: GraphView = 'live', documentSpace: number | ((node: MeetingNode) => number) = 0, measuredTopicHeight?: (node: MeetingNode) => number | undefined) {
 	const flat = flattenMap(map);
-	const cardHeight = (view === 'organized' ? COMPACT_CARD_HEIGHT : CARD_HEIGHT) + documentSpace;
+	const cardHeight = view === 'organized' ? COMPACT_CARD_HEIGHT : CARD_HEIGHT;
 	const rows: typeof flat.nodes[] = [];
 	if (view === 'live') {
 		rows.push(...flat.nodes.map((node) => [node]));
@@ -50,30 +50,39 @@ export function layoutGraph(map: MeetingMap, view: GraphView = 'live', documentS
 	}
 	const columns = Math.max(1, ...rows.map((row) => row.length));
 	const width = PADDING * 2 + columns * CARD_WIDTH + (columns - 1) * COLUMN_GAP;
-	const nodes = rows.flatMap((row, index) => row.map((node, column) => ({
-		node,
-		x: (width - (row.length * CARD_WIDTH + (row.length - 1) * COLUMN_GAP)) / 2 + column * (CARD_WIDTH + COLUMN_GAP),
-		y: PADDING + index * (cardHeight + ROW_GAP)
-	})));
+	let nextY = PADDING;
+	const nodes = rows.flatMap((row, index) => {
+		const positioned = row.map((node, column) => {
+			const extra = Math.max(0, typeof documentSpace === 'function' ? documentSpace(node) : documentSpace);
+			const topicHeight = measuredTopicHeight?.(node) ?? cardHeight;
+			return {
+				node, row: index, documentSpace: extra, height: topicHeight + extra,
+				x: (width - (row.length * CARD_WIDTH + (row.length - 1) * COLUMN_GAP)) / 2 + column * (CARD_WIDTH + COLUMN_GAP),
+				y: nextY
+			};
+		});
+		nextY += Math.max(...positioned.map((item) => item.height)) + ROW_GAP;
+		return positioned;
+	});
 	const positions = new Map(nodes.map((item) => [item.node.id, item]));
 	const edges = flat.edges.flatMap((edge, index) => {
 		const from = positions.get(edge.source);
 		const to = positions.get(edge.target);
 		if (!from || !to || from === to) return [];
 		const returning = to.y <= from.y;
-		const routed = returning || to.y - from.y > cardHeight + ROW_GAP;
+		const routed = returning || to.row - from.row > 1;
 		if (routed) {
 			const lane = Math.max(from.x, to.x) + CARD_WIDTH + 24 + (index % 3) * 12;
-			const y1 = from.y + cardHeight / 2;
-			const y2 = to.y + cardHeight / 2;
+			const y1 = from.y + from.height / 2;
+			const y2 = to.y + to.height / 2;
 			return [{ ...edge, returning, path: `M ${from.x + CARD_WIDTH} ${y1} H ${lane} V ${y2} H ${to.x + CARD_WIDTH}`, x: lane, y: (y1 + y2) / 2 - 8 }];
 		}
 		const x1 = from.x + CARD_WIDTH / 2;
-		const y1 = from.y + cardHeight;
+		const y1 = from.y + from.height;
 		const x2 = to.x + CARD_WIDTH / 2;
 		const y2 = to.y;
 		const middle = (y1 + y2) / 2;
 		return [{ ...edge, returning, path: `M ${x1} ${y1} C ${x1} ${middle}, ${x2} ${middle}, ${x2} ${y2}`, x: (x1 + x2) / 2, y: middle - 8 }];
 	});
-	return { nodes, edges, cardHeight, width, height: Math.max(350, PADDING * 2 + rows.length * (cardHeight + ROW_GAP) - ROW_GAP) };
+	return { nodes, edges, cardHeight, width, height: Math.max(350, nextY - ROW_GAP + PADDING) };
 }

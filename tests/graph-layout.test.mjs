@@ -36,10 +36,44 @@ test('document lists reserve space without overlapping cards or disconnecting ed
 		const map = { nodes: ['a', 'b'].map(node), edges: [edge('a', 'b')] };
 		const plain = layoutGraph(map, view);
 		const withDocuments = layoutGraph(map, view, 132);
-		assert.equal(withDocuments.cardHeight, plain.cardHeight + 132);
-		assert.ok(withDocuments.nodes[1].y > withDocuments.nodes[0].y + withDocuments.cardHeight);
-		assert.ok(withDocuments.edges[0].path.startsWith(`M ${withDocuments.nodes[0].x + CARD_WIDTH / 2} ${withDocuments.nodes[0].y + withDocuments.cardHeight}`));
+		assert.equal(withDocuments.nodes[0].height, plain.nodes[0].height + 132);
+		assert.ok(withDocuments.nodes[1].y > withDocuments.nodes[0].y + withDocuments.nodes[0].height);
+		assert.ok(withDocuments.edges[0].path.startsWith(`M ${withDocuments.nodes[0].x + CARD_WIDTH / 2} ${withDocuments.nodes[0].y + withDocuments.nodes[0].height}`));
 	}
+});
+
+test('only cards with documents grow; mixed heights keep arrows attached and rows clear', () => {
+	for (const view of ['live', 'organized']) {
+		const map = { nodes: ['a', 'b', 'c'].map(node), edges: [edge('a', 'b'), edge('b', 'c'), edge('c', 'a')] };
+		const plain = layoutGraph(map, view);
+		const graph = layoutGraph(map, view, n => n.id === 'b' ? 70 : 0);
+		const p = positions(graph);
+		assert.equal(p.get('a').height, plain.cardHeight);
+		assert.equal(p.get('b').height, plain.cardHeight + 70);
+		assert.equal(p.get('c').height, plain.cardHeight);
+		assert.equal(p.get('b').y, positions(plain).get('b').y);
+		assert.equal(p.get('c').y, positions(plain).get('c').y + 70);
+		for (const item of graph.nodes) assert.ok(item.y + item.height <= graph.height);
+		assert.ok(graph.edges[1].path.startsWith(`M ${p.get('b').x + CARD_WIDTH / 2} ${p.get('b').y + p.get('b').height}`));
+		assert.ok(graph.edges[2].path.startsWith(`M ${p.get('c').x + CARD_WIDTH} ${p.get('c').y + p.get('c').height / 2}`));
+		assert.deepEqual(layoutGraph(map, view, () => 0), plain, 'No reserved document whitespace without results');
+	}
+});
+
+test('measured topic content determines card height and connector endpoints', () => {
+	const map = { nodes: ['a', 'b'].map(node), edges: [edge('a', 'b')] };
+	const graph = layoutGraph(map, 'live', n => n.id === 'b' ? 70 : 0, n => n.id === 'a' ? 96 : 120);
+	assert.equal(graph.nodes[0].height, 96);
+	assert.equal(graph.nodes[1].height, 190);
+	assert.ok(graph.nodes[1].y > graph.nodes[0].y + 96);
+	assert.ok(graph.edges[0].path.startsWith(`M ${graph.nodes[0].x + CARD_WIDTH / 2} ${graph.nodes[0].y + 96}`));
+});
+
+test('organized rows use their tallest card to avoid overlapping the next row', () => {
+	const graph = layoutGraph({ nodes: ['root', 'left', 'right', 'end'].map(node), edges: [edge('root', 'left'), edge('root', 'right'), edge('left', 'end')] }, 'organized', n => n.id === 'right' ? 114 : 0);
+	const p = positions(graph);
+	assert.equal(p.get('left').y, p.get('right').y);
+	assert.ok(p.get('end').y > p.get('right').y + p.get('right').height);
 });
 
 test('organized view ranks real dependencies, even when input nodes are out of order', () => {
