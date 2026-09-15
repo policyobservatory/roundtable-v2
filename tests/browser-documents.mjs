@@ -20,6 +20,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const json = (data) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)); };
   if (url.pathname === '/api/meetings') return json([meeting]);
+  if (url.pathname === '/api/chat') return json({ content: '# Meeting summary\n\n**Approved** the budget.\n\n- Assign an owner\n- Follow up\n\n```js\nconst budget = 100;\n```\n\n| Topic | Owner |\n| --- | --- |\n| Budget | Alex |\n\n[Policy](https://example.org)\n\n<script>window.markdownInjected = true</script>\n\n[unsafe](javascript:alert%281%29)' });
   if (url.pathname.endsWith('/references')) {
    if (req.method === 'POST') {
     submissions++;
@@ -75,6 +76,18 @@ try {
  await evaluate(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Browser reference test')).click()`);
  await waitFor(`document.querySelector('[aria-label="Canvas view"]')`);
  assert.equal(await evaluate(`document.querySelector('[aria-label="Canvas view"] [aria-pressed="true"]').textContent`), 'Organized canvas');
+ assert.equal(await evaluate(`Array.from(document.querySelectorAll('span')).find(s => s.classList.contains('rounded-full') && s.textContent.includes('completed'))?.textContent.trim()`), 'completed', 'Status badge has no stray brace');
+ await click('Chat');
+ await waitFor(`document.querySelector('textarea[placeholder="Ask something..."]')`);
+ await evaluate(`(() => { const input = document.querySelector('textarea[placeholder="Ask something..."]'); input.value = 'Summarize the meeting'; input.dispatchEvent(new Event('input', { bubbles: true })); input.closest('form').requestSubmit(); })()`);
+ await waitFor(`document.querySelector('.markdown h1')?.textContent === 'Meeting summary'`);
+ assert.equal(await evaluate(`document.querySelector('.markdown strong')?.textContent`), 'Approved');
+ assert.equal(await evaluate(`document.querySelectorAll('.markdown ul li').length`), 2);
+ assert.equal(await evaluate(`!!document.querySelector('.markdown pre code') && !!document.querySelector('.markdown table')`), true);
+ assert.equal(await evaluate(`document.querySelector('.markdown a')?.getAttribute('href')`), 'https://example.org');
+ assert.equal(await evaluate(`!!window.markdownInjected || !!document.querySelector('.markdown script, .markdown a[href^="javascript:"]')`), false);
+ assert.equal(await evaluate(`getComputedStyle(document.querySelector('.markdown ul')).listStyleType`), 'disc');
+ await click('Hide chat');
  const assertQuiet = async () => assert.equal(await evaluate(`/No matching documents|0 documents|Document search|Retry document|Finding related|Document lookup/.test(document.body.innerText)`), false);
  await assertQuiet();
  await waitFor(`document.body.innerText.includes('1 related provision')`);
@@ -93,6 +106,49 @@ try {
  await assertQuiet();
  const tops = await evaluate(`Array.from(document.querySelectorAll('button')).filter(b => b.querySelector('h3')).map(b => parseFloat(b.style.top))`);
  assert.ok(tops[1] > tops[0]);
+ await evaluate(`document.querySelector('button[title="Close topic details"]')?.click()`);
+ const canvas = `document.querySelector('[role="application"]')`;
+ const follow = `Array.from(document.querySelectorAll('label')).find(l => l.textContent.includes('Follow latest topic')).querySelector('input')`;
+ const transform = () => evaluate(`${canvas}.querySelector('div[style*="transform"]').style.transform`);
+ const assertCentered = async () => {
+  const distance = await evaluate(`(() => { const v = ${canvas}.getBoundingClientRect(); const n = Array.from(${canvas}.querySelectorAll('button')).at(-1).getBoundingClientRect(); return Math.hypot(n.x + n.width / 2 - v.x - v.width / 2, n.y + n.height / 2 - v.y - v.height / 2); })()`);
+  assert.ok(distance < 2, 'Latest topic is centered');
+ };
+ const refollow = async () => {
+  assert.equal(await evaluate(`${follow}.checked`), false, 'Manual navigation pauses follow');
+  await evaluate(`${follow}.click()`);
+  await new Promise(r => setTimeout(r, 50));
+  await assertCentered();
+ };
+ await evaluate(`if (!${follow}.checked) ${follow}.click()`);
+ await new Promise(r => setTimeout(r, 50));
+ await assertCentered();
+ await evaluate(`${follow}.click()`); // off then on without a new topic or any movement
+ await refollow();
+ const drag = async (onCard) => {
+  const point = await evaluate(`(() => { const r = ${onCard ? `Array.from(${canvas}.querySelectorAll('button')).at(-1)` : canvas}.getBoundingClientRect(); return { x: r.x + ${onCard ? 'r.width / 2' : '25'}, y: r.y + ${onCard ? 'r.height / 2' : '25'} }; })()`);
+  const before = await transform();
+  await command('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+  await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x + 100, y: point.y + 70, button: 'left', buttons: 1 });
+  await command('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x + 100, y: point.y + 70, button: 'left', clickCount: 1 });
+  assert.notEqual(await transform(), before, 'Dragging pans the canvas');
+  assert.equal(await evaluate(`!!document.querySelector('button[title="Close topic details"]')`), false, 'Dragging does not select a card');
+  await refollow();
+ };
+ await drag(false);
+ await drag(true);
+ const beforeWheel = await transform();
+ const point = await evaluate(`(() => { const r = ${canvas}.getBoundingClientRect(); return { x: r.x + 30, y: r.y + 30 }; })()`);
+ await command('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 60, deltaY: 120 });
+ await waitFor(`${follow}.checked === false`);
+ assert.notEqual(await transform(), beforeWheel, 'Trackpad/wheel pans the canvas');
+ await refollow();
+ await evaluate(`${canvas}.focus(); ${canvas}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));`);
+ await refollow();
+ await evaluate(`Array.from(${canvas}.querySelectorAll('button')).at(-1).click()`);
+ await waitFor(`document.querySelector('button[title="Close topic details"]')`);
+ await refollow();
+ assert.equal(await evaluate(`!!document.querySelector('button[title="Close topic details"]')`), false, 'Following closes details so they cannot obscure the centered topic');
  const screenshot = await command('Page.captureScreenshot', { format: 'png' });
  await writeFile(join(tmpdir(), 'roundtable-documents-ui.png'), Buffer.from(screenshot.data, 'base64'));
  await click('New transcript');
@@ -101,7 +157,7 @@ try {
  await waitFor(`document.querySelector('#live-audio-source')?.value === 'tab'`);
  assert.equal(await evaluate(`document.querySelector('#live-speech-language').value`), 'fil-en');
  assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
- console.log(JSON.stringify({ passed: true, checks: ['organized default', 'quiet pending/error/empty states', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
+ console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'quiet pending/error/empty states', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
 } finally {
  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
  await new Promise((r) => setTimeout(r, 500));
