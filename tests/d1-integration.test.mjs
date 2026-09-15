@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { saveSegment, getSegments, getMeeting } from '../shared/db.ts';
-import { readMeetingTranscript } from '../shared/meeting-transcript.ts';
+import { readMeetingTranscript, readMeetingTranscriptData } from '../shared/meeting-transcript.ts';
 
 // Use the local Wrangler runtime/compiler, without remote Cloudflare resources.
 const requireWrangler = createRequire(import.meta.resolve('wrangler/package.json'));
@@ -53,13 +53,19 @@ test('local D1 persistence and API reliability', { timeout: 60000 }, async (t) =
 			for (const index of [2, 1]) assert.equal((await post('/api/segments', { ...segment, id: crypto.randomUUID(), segment_index: index, text: `Part ${index}` })).status, 201);
 			const res = await app.request(`/api/meetings/${id}`, undefined, env);
 			assert.equal(res.status, 200);
-			assert.equal((await res.json()).transcript, 'Initial notes\nA saved decision\nPart 1\nPart 2');
+			const data = await res.json();
+			assert.equal(data.transcript, 'Initial notes\nA saved decision\nPart 1\nPart 2');
+			assert.equal(data.baseTranscript, 'Initial notes');
+			assert.deepEqual(data.segments.map(s => s.segment_index), [0, 1, 2]);
+			assert.equal(data.segments[0].created_at, segment.created_at);
+			assert.equal(data.segments[0].text, segment.text);
 		});
 
 		await t.test('legacy R2 transcripts are not doubled by their historical D1 segments', async () => {
 			const meeting = await getMeeting(db, id);
 			meeting.metadata = {};
 			assert.equal(await readMeetingTranscript(db, bucket, meeting), 'Initial notes');
+			assert.deepEqual(await readMeetingTranscriptData(db, bucket, meeting), { transcript: 'Initial notes', baseTranscript: 'Initial notes', segments: [] });
 		});
 
 		await t.test('STT does not read or initialize D1', async () => {

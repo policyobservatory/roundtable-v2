@@ -10,7 +10,7 @@
 		deleteMeeting,
 		analyzeMeeting
 	} from '$lib/api';
-	import type { AIProvider, Meeting, STTProvider } from '$shared/types';
+	import type { AIProvider, Meeting, STTProvider, TranscriptSegment } from '$shared/types';
 	import type { AudioSource } from '$lib/live-audio';
 	import { DEFAULT_SPEECH_LANGUAGE, DEFAULT_STT_PROVIDER, type SpeechLanguage } from '$shared/speech-settings';
 
@@ -23,6 +23,8 @@
 	let meetings = $state<Meeting[]>([]);
 	let currentMeeting = $state<Meeting | null>(null);
 	let currentTranscript = $state('');
+	let currentSegments = $state<TranscriptSegment[]>([]);
+	let currentBaseTranscript = $state('');
 	let isLoading = $state(false);
 	let error = $state('');
 	let progress = $state<{ processed: number; total: number } | null>(null);
@@ -49,6 +51,8 @@
 			const full = await getMeeting(id);
 			currentMeeting = full.meeting;
 			currentTranscript = full.transcript;
+			currentSegments = full.segments ?? [];
+			currentBaseTranscript = full.baseTranscript ?? '';
 			await loadMeetings();
 			view = 'canvas';
 		} catch (err: unknown) {
@@ -64,6 +68,8 @@
 			const full = await getMeeting(meeting.id);
 			currentMeeting = full.meeting;
 			currentTranscript = full.transcript;
+			currentSegments = full.segments ?? [];
+			currentBaseTranscript = full.baseTranscript ?? '';
 			view = 'canvas';
 		} catch (err) { error = `Could not open meeting: ${err instanceof Error ? err.message : String(err)}`; }
 	}
@@ -73,9 +79,11 @@
 		catch (err) { error = `Could not delete meeting: ${err instanceof Error ? err.message : String(err)}`; }
 	}
 
-	function handleLiveEnd(meeting: Meeting | null, err?: string, transcript = '') {
+	function handleLiveEnd(meeting: Meeting | null, err?: string, transcript = '', segments: TranscriptSegment[] = []) {
 		if (meeting) {
 			currentTranscript = transcript;
+			currentSegments = segments;
+			currentBaseTranscript = '';
 			currentMeeting = meeting;
 			loadMeetings();
 			view = 'canvas';
@@ -89,7 +97,7 @@
 {#if view === 'live'}
 	<LiveMeetingView bind:sttProvider={liveSTTProvider} bind:audioSource={liveAudioSource} bind:speechLanguage={liveSpeechLanguage} onEnd={handleLiveEnd} />
 {:else if view === 'canvas' && currentMeeting}
-	<CanvasView meeting={currentMeeting} transcript={currentTranscript} onBack={() => { currentMeeting = null; view = 'input'; loadMeetings(); }} />
+	<CanvasView meeting={currentMeeting} transcript={currentTranscript} segments={currentSegments} baseTranscript={currentBaseTranscript} onBack={() => { currentMeeting = null; view = 'input'; loadMeetings(); }} />
 {:else}
 	<InputScreen
 		{isLoading}

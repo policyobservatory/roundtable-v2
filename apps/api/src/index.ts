@@ -8,7 +8,7 @@ import type { ReferenceMessage } from '../../../shared/document-references';
 import type { D1Database, R2Bucket, Fetcher } from '@cloudflare/workers-types';
 import type { AppEnv } from '../../../shared/env';
 import { parseEnv } from '../../../shared/env';
-import { readMeetingTranscript } from '../../../shared/meeting-transcript';
+import { readMeetingTranscript, readMeetingTranscriptData } from '../../../shared/meeting-transcript';
 import { isTransientError } from '../../../shared/retry';
 import {
 	listMeetings,
@@ -99,11 +99,11 @@ app.get('/api/meetings/:id', async (c) => {
 	const id = c.req.param('id');
 	const meeting = await getMeeting(env.DB, id);
 	if (!meeting) return c.json({ error: 'Meeting not found' }, 404);
-	const [transcript, chunks] = await Promise.all([
-		readMeetingTranscript(env.DB, env.TRANSCRIPTS, meeting),
+	const [transcriptData, chunks] = await Promise.all([
+		readMeetingTranscriptData(env.DB, env.TRANSCRIPTS, meeting),
 		getChunks(env.DB, id)
 	]);
-	return c.json({ meeting, transcript, chunks });
+	return c.json({ meeting, ...transcriptData, chunks });
 });
 
 app.delete('/api/meetings/:id', async (c) => {

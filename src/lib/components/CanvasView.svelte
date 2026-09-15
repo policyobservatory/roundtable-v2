@@ -5,9 +5,10 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import ChatPanel from './ChatPanel.svelte';
 	import FlowCanvas from './FlowCanvas.svelte';
-	import type { Meeting } from '$shared/types';
+	import type { Meeting, TranscriptSegment } from '$shared/types';
+	import TranscriptView from './TranscriptView.svelte';
 
-	let { meeting, transcript, onBack }: { meeting: Meeting; transcript: string; onBack: () => void } = $props();
+	let { meeting, transcript, segments = [], baseTranscript = '', onBack }: { meeting: Meeting; transcript: string; segments?: TranscriptSegment[]; baseTranscript?: string; onBack: () => void } = $props();
 	let showChat = $state(false);
 	let showTranscript = $state(true);
 	let retrying = $state(false);
@@ -24,6 +25,8 @@
 					const result = await getMeeting(meeting.id);
 					meeting = result.meeting;
 					transcript = result.transcript;
+					segments = result.segments ?? [];
+					baseTranscript = result.baseTranscript ?? '';
 					return;
 				}
 			}
@@ -52,7 +55,8 @@
 	<div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
 		{#if showTranscript}
 			<aside class="max-h-[35vh] shrink-0 overflow-auto border-b border-zinc-200 bg-white p-4 md:max-h-none md:w-80 md:border-b-0 md:border-r dark:border-zinc-800 dark:bg-zinc-950">
-				<h3 class="mb-3 text-sm font-medium">Transcript</h3><p class="whitespace-pre-wrap text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">{transcript}</p>
+				<h3 class="mb-3 text-sm font-medium">Transcript</h3>
+				<TranscriptView {transcript} {segments} {baseTranscript} />
 			</aside>
 		{/if}
 		<div class="min-h-0 min-w-0 flex-1"><FlowCanvas meetingId={meeting.id} map={meeting.map ?? { nodes: [], edges: [] }} updating={retrying} view="organized" /></div>

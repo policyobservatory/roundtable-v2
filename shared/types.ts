@@ -54,6 +54,8 @@ export interface Segment {
 	created_at: string;
 }
 
+export type TranscriptSegment = Pick<Segment, 'id' | 'segment_index' | 'text' | 'created_at'>;
+
 export interface ChatMessage {
 	role: 'system' | 'user' | 'assistant';
 	content: string;

@@ -5,7 +5,7 @@
 	import { acquireAudio, recordAudio, stopMediaStream, type AudioSource, type AudioRecording } from '$lib/live-audio';
 	import { createProgressiveMap } from '$lib/progressive-map';
 	import { readLiveDraft, saveLiveDraft, clearLiveDraft, persistLiveSegment, type LiveSegment, type LiveDraft } from '$lib/live-session';
-	import type { Meeting, MeetingMap, STTProvider } from '$shared/types';
+	import type { Meeting, MeetingMap, STTProvider, TranscriptSegment } from '$shared/types';
 	import { DEFAULT_AI_MODEL, getAIModel } from '$lib/constants';
 	import { DEFAULT_SPEECH_LANGUAGE, DEFAULT_STT_PROVIDER, LIVE_AUDIO_CHUNK_MS, SPEECH_LANGUAGES, speechLanguageError, type SpeechLanguage } from '$shared/speech-settings';
 	import SpeechSettings from './SpeechSettings.svelte';
@@ -17,7 +17,7 @@
 	import Select from './ui/Select.svelte';
 
 	let { onEnd, sttProvider = $bindable<STTProvider>(DEFAULT_STT_PROVIDER), speechLanguage = $bindable<SpeechLanguage>(DEFAULT_SPEECH_LANGUAGE), audioSource = $bindable<AudioSource>('microphone') }: {
-		onEnd: (meeting: Meeting | null, error?: string, transcript?: string) => void;
+		onEnd: (meeting: Meeting | null, error?: string, transcript?: string, segments?: TranscriptSegment[]) => void;
 		sttProvider?: STTProvider;
 		speechLanguage?: SpeechLanguage;
 		audioSource?: AudioSource;
@@ -99,7 +99,7 @@
 		if (!finalMeeting && (recording || unsaved || finishing) && !confirm('Leave this meeting? Capture will stop. Recognized text is kept in this browser when recovery storage is available; download a copy first if needed.')) return;
 		if (finalMeeting) {
 			try { clearLiveDraft(localStorage); } catch { /* Best effort. */ }
-			onEnd(finalMeeting, undefined, transcript);
+			onEnd(finalMeeting, undefined, transcript, segments);
 		} else onEnd(null);
 	}
 	async function savePending() {

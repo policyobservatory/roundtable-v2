@@ -1,4 +1,4 @@
-import type { AIProvider, Meeting, MeetingMap, Segment, STTProvider } from '$shared/types';
+import type { AIProvider, Meeting, MeetingMap, Segment, STTProvider, TranscriptSegment } from '$shared/types';
 import type { AnalysisEvent } from '$shared/analysis';
 import type { SpeechLanguage } from '$shared/speech-settings';
 import type { ReferenceTopic, ReferenceAssignment, DocumentReference } from '$shared/document-references';
@@ -42,7 +42,7 @@ export async function createMeeting(data: {
 
 export async function getMeeting(id: string) {
 	const res = await api(`/api/meetings/${id}`);
-	return res.json() as Promise<{ meeting: Meeting; transcript: string; chunks: unknown[] }>;
+	return res.json() as Promise<{ meeting: Meeting; transcript: string; baseTranscript?: string; segments?: TranscriptSegment[]; chunks: unknown[] }>;
 }
 
 export async function deleteMeeting(id: string) {
