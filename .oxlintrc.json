@@ -1,0 +1,14 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"jsPlugins": ["@shadcn/lint"],
+	"categories": {
+		"correctness": "off"
+	},
+	"ignorePatterns": ["worker-configuration.d.ts"],
+	"settings": {
+		"shadcn": {
+			"ui": "$lib/components/ui"
+		}
+	},
+	"rules": {}
+}

@@ -153,6 +153,42 @@ npx wrangler dev
 npm run dev
 ```
 
+## Linting
+
+```bash
+npm run lint
+npm run check
+```
+
+`@shadcn/lint` is registered with Oxlint in **`.oxlintrc.json`**. This is a
+single npm project: the root lint command includes the frontend, API, shared
+modules, and tests. Oxlint respects `.gitignore`; its configuration also excludes
+the generated `worker-configuration.d.ts`.
+
+**No lint rules are enabled yet.** The empty `rules` object is where you can add
+`shadcn/...` rules after choosing a policy. Oxlint's default `correctness` category
+is explicitly off so installation does not introduce unrelated rule policies.
+A successful lint run currently verifies setup, not design-system compliance.
+
+- [Available rules](https://github.com/shadcn-ui/lint/blob/main/README.md#rules)
+- [Configuration examples and contracts](https://github.com/shadcn-ui/lint/blob/main/docs/design-systems.md)
+
+`settings.shadcn.ui` identifies the custom `$lib/components/ui` import prefix.
+The Tailwind v4 stylesheet, `src/routes/layout.css`, is discoverable through its
+Tailwind import; no `components.json` or additional theme settings are needed.
+
+**Svelte limitation:** Oxlint checks only `<script>` blocks in `.svelte` files,
+not template markup or styles. The plugin's JSX-oriented component rules do not
+provide Svelte-template enforcement. Keep using `npm run check` for Svelte and
+TypeScript diagnostics; it is unchanged and is not a design-system linter either.
+
+Use Node.js **24+**, as required by this project's tests and verified with this
+setup. Upstream requires Node.js 20.19+ and Oxlint 1.80+; the installed Oxlint
+and its dependencies have additional Node-version constraints. Oxlint's JS
+plugin API is currently alpha. Setup follows the upstream
+[installation guide](https://github.com/shadcn-ui/lint/blob/main/SETUP.md) without
+adding rule presets or changing application styles.
+
 ## Deploy
 
 ```bash
