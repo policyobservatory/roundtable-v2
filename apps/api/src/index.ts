@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
 import { bodyLimit } from 'hono/body-limit';
+import { waitlistSchema } from '../../../shared/waitlist';
+import { saveWaitlistSignup } from '../../../shared/waitlist-store';
 import { liveMapSchema, flattenMap } from '../../../shared/meeting-map';
 import { ensureDocumentJobs, getDocumentReferences, dispatchDocumentJobs, consumeDocumentJobs } from '../../../shared/document-jobs';
 import type { ReferenceMessage } from '../../../shared/document-references';
@@ -61,6 +63,34 @@ app.use('*', async (c, next) => {
 });
 
 app.get('/api/health', (c) => c.json({ ok: true }));
+
+app.use('/api/waitlist', async (c, next) => {
+	c.header('Cache-Control', 'no-store');
+	return next();
+});
+app.post('/api/waitlist', bodyLimit({
+	maxSize: 8192,
+	onError: c => c.json({ error: 'Signup is too large. Please shorten your details.' }, 413)
+}), async c => {
+	if (c.req.header('Content-Type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+		return c.json({ error: 'Send signup details as JSON.' }, 415);
+	}
+	const parsed = waitlistSchema.safeParse(await c.req.json().catch(() => null));
+	if (!parsed.success) return c.json({ error: 'Enter a valid first name, email, and industry selection.' }, 400);
+	if (parsed.data.website?.trim()) return c.json({ ok: true });
+	try {
+		await saveWaitlistSignup(c.env.DB, parsed.data);
+		// Same acknowledgement for new/duplicate emails: no subscriber enumeration or PII.
+		return c.json({ ok: true });
+	} catch {
+		console.error(JSON.stringify({ event: 'waitlist_save_failed' }));
+		return c.json({ error: 'We could not save your signup. Please try again shortly.' }, 503);
+	}
+});
+app.all('/api/waitlist', c => {
+	c.header('Allow', 'POST, OPTIONS');
+	return c.json({ error: 'Method not allowed.' }, 405);
+});
 
 app.get('/api/meetings', async (c) => {
 	const env = await getEnv(c.env);

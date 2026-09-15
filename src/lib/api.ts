@@ -3,6 +3,7 @@ import type { AnalysisEvent } from '$shared/analysis';
 import type { SpeechLanguage } from '$shared/speech-settings';
 import type { ReferenceTopic, ReferenceAssignment, DocumentReference } from '$shared/document-references';
 import type { ChatSession, ChatSessionData, SendChatTurn } from '$shared/chat-types';
+import type { WaitlistSignup } from '$shared/waitlist';
 
 const base = '';
 
@@ -21,6 +22,15 @@ async function api(path: string, options?: RequestInit) {
 		throw new ApiError(err.error || `Request failed: ${res.status}`, res.status);
 	}
 	return res;
+}
+
+export async function joinWaitlist(data: WaitlistSignup, signal: AbortSignal): Promise<void> {
+	const response = await api('/api/waitlist', {
+		method: 'POST', body: JSON.stringify(data),
+		signal: AbortSignal.any([signal, AbortSignal.timeout(20000)])
+	});
+	const result: { ok?: boolean } = await response.json();
+	if (result.ok !== true) throw new Error('Signup was not confirmed. Please try again.');
 }
 
 export async function listMeetings(): Promise<Meeting[]> {
