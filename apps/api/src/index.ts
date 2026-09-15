@@ -10,6 +10,8 @@ import type { AppEnv } from '../../../shared/env';
 import { parseEnv } from '../../../shared/env';
 import { readMeetingTranscript, readMeetingTranscriptData } from '../../../shared/meeting-transcript';
 import { isTransientError } from '../../../shared/retry';
+import { ChatError, createChatSession, deleteChatSession, listChatSessions, readChatSession, claimChatTurn, finishChatTurn, failChatTurn, readChatHistory } from '../../../shared/chat-store';
+import { buildChatMessages } from '../../../shared/chat-context';
 import {
 	listMeetings,
 	createMeeting,
@@ -44,6 +46,7 @@ async function getEnv(rawEnv: Env) {
 export const app = new Hono<{ Bindings: Env }>();
 
 app.onError((err, c) => {
+	if (err instanceof ChatError) return c.json({ error: err.message }, err.status);
 	console.error(JSON.stringify({ event: 'api_error', path: c.req.path, message: err.message }));
 	return c.json({ error: err.message, retryable: isTransientError(err) }, isTransientError(err) ? 503 : 500);
 });
@@ -198,9 +201,78 @@ app.post('/api/stt/:provider', async (c) => {
 	return c.json(await transcribeAudio(provider, audio, env, language));
 });
 
+const chatModelSchema = { provider: z.enum(['workers-ai', 'openrouter', 'llmapi']), model: z.string().trim().min(1).max(200) };
+const createChatSchema = z.object({ id: z.string().uuid(), title: z.string().trim().min(1).max(100).default('New chat'), ...chatModelSchema }).strict();
+const chatTurnSchema = z.object({ id: z.string().uuid(), content: z.string().trim().min(1).max(4000), ...chatModelSchema }).strict();
+
+app.get('/api/meetings/:meetingId/chats', async (c) => {
+	const env = await getEnv(c.env);
+	const meetingId = c.req.param('meetingId');
+	if (!await getMeeting(env.DB, meetingId)) return c.json({ error: 'Meeting not found' }, 404);
+	const offset = z.coerce.number().int().min(0).max(100000).safeParse(c.req.query('offset') ?? 0);
+	if (!offset.success) return c.json({ error: 'Invalid chat page' }, 400);
+	c.header('Cache-Control', 'no-store');
+	return c.json(await listChatSessions(env.DB, meetingId, offset.data));
+});
+app.post('/api/meetings/:meetingId/chats', bodyLimit({ maxSize: 4096 }), async (c) => {
+	const parsed = createChatSchema.safeParse(await c.req.json().catch(() => null));
+	if (!parsed.success) return c.json({ error: 'Invalid chat session' }, 400);
+	const env = await getEnv(c.env);
+	const meetingId = c.req.param('meetingId');
+	if (!await getMeeting(env.DB, meetingId)) return c.json({ error: 'Meeting not found' }, 404);
+	const now = new Date().toISOString();
+	return c.json(await createChatSession(env.DB, { ...parsed.data, meeting_id: meetingId, created_at: now, updated_at: now }), 201);
+});
+app.get('/api/meetings/:meetingId/chats/:sessionId', async (c) => {
+	const env = await getEnv(c.env);
+	const before = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).safeParse(c.req.query('before') ?? Number.MAX_SAFE_INTEGER);
+	if (!before.success) return c.json({ error: 'Invalid message page' }, 400);
+	c.header('Cache-Control', 'no-store');
+	return c.json(await readChatSession(env.DB, c.req.param('meetingId'), c.req.param('sessionId'), before.data));
+});
+app.delete('/api/meetings/:meetingId/chats/:sessionId', async (c) => {
+	const env = await getEnv(c.env);
+	await deleteChatSession(env.DB, c.req.param('meetingId'), c.req.param('sessionId'));
+	return c.json({ ok: true });
+});
+app.post('/api/meetings/:meetingId/chats/:sessionId/messages', bodyLimit({ maxSize: 24 * 1024 }), async (c) => {
+	const parsed = chatTurnSchema.safeParse(await c.req.json().catch(() => null));
+	if (!parsed.success) return c.json({ error: 'Send a message of 1–4000 characters with a valid request ID and model.' }, 400);
+	const env = await getEnv(c.env);
+	const meetingId = c.req.param('meetingId');
+	const sessionId = c.req.param('sessionId');
+	const request = parsed.data;
+	const claim = await claimChatTurn(env.DB, meetingId, sessionId, request);
+	if (!claim.cached) {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		try {
+			const work = async () => {
+				const meeting = await getMeeting(env.DB, meetingId);
+				if (!meeting) throw new ChatError('Meeting not found', 404);
+				const [transcript, summaries, history, documents] = await Promise.all([
+					readMeetingTranscript(env.DB, env.TRANSCRIPTS, meeting), getChunks(env.DB, meetingId),
+					readChatHistory(env.DB, sessionId, claim.turn.position),
+					searchDocuments(request.content, env).catch(() => [])
+				]);
+				return chatCompletion(buildChatMessages(history, request.content, transcript, summaries, documents), request.provider, request.model, env, { temperature: 0.7, max_tokens: 2048 });
+			};
+			const content = await Promise.race([work(), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Chat response timed out')), 90000); })]);
+			if (!content.trim() || content.length > 20000) throw new Error('Invalid model response');
+			await finishChatTurn(env.DB, meetingId, sessionId, request.id, claim.token, content);
+		} catch (error) {
+			await failChatTurn(env.DB, request.id, claim.token);
+			if (error instanceof ChatError) throw error;
+			console.warn(JSON.stringify({ event: 'chat_turn_failed', sessionId, turnId: request.id }));
+			throw new ChatError('The reply could not be completed. Your message is saved; retry it in this chat.', 502);
+		} finally { clearTimeout(timer); }
+	}
+	return c.json(await readChatSession(env.DB, meetingId, sessionId));
+});
+
 app.post('/api/chat', async (c) => {
 	const env = await getEnv(c.env);
 	const body = (await c.req.json()) as Record<string, unknown>;
+	if (body.meeting_id) return c.json({ error: 'Meeting chat now uses saved sessions. Reload Roundtable to continue.' }, 409);
 	const messages = (body.messages as ChatMessage[]) ?? [];
 	const provider: AIProvider = (body.provider as AIProvider) ?? 'workers-ai';
 	const model = (body.model as string) ?? (provider === 'workers-ai' ? env.WORKERS_AI_MODEL : provider === 'llmapi' ? env.LLMAPI_MODEL : env.OPENROUTER_MODEL);
