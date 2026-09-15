@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ZoomIn, ZoomOut, Maximize, X, Loader2 } from '@lucide/svelte';
+	import { untrack } from 'svelte';
 	import type { MeetingMap } from '$shared/types';
 	import { flattenMap } from '$shared/meeting-map';
 	import { referenceLabel, referenceRevision, type DocumentReference } from '$shared/document-references';
@@ -34,11 +35,13 @@
 	let selectedId = $state<string | null>(null);
 	const selected = $derived(graph.nodes.find((item) => item.node.id === selectedId)?.node);
 	let viewport = $state<HTMLDivElement>();
-	let dragging = false;
+	let dragging = $state(false);
+	let pointerId: number | null = null;
+	let suppressClick = false;
 	let lastX = 0;
 	let lastY = 0;
 	let fittedView: GraphView | null = null;
-	let lastFollowedId: string | null = null;
+	let lastFollowedId = $state<string | null>(null);
 	const markerId = $props.id();
 
 	function fit() {
@@ -48,13 +51,13 @@
 		y = (viewport.clientHeight - graph.height * scale) / 2;
 	}
 	$effect(() => {
-		if (graph.nodes.length && viewport && fittedView !== view) { fittedView = view; fit(); }
+		if (graph.nodes.length && viewport && fittedView !== view) { fittedView = view; untrack(fit); }
 	});
 	$effect(() => {
 		const latest = graph.nodes.at(-1);
-		if (live && view === 'live' && followLatest && viewport && latest && lastFollowedId !== latest.node.id) {
+		if (view === 'live' && followLatest && viewport && latest && lastFollowedId !== latest.node.id) {
 			lastFollowedId = latest.node.id;
-			panTo(latest);
+			untrack(() => panTo(latest));
 		}
 	});
 	function changeView(next: GraphView) { view = next; lastFollowedId = null; }
@@ -63,7 +66,39 @@
 		x = viewport.clientWidth / 2 - (item.x + CARD_WIDTH / 2) * scale;
 		y = viewport.clientHeight / 2 - (item.y + graph.cardHeight / 2) * scale;
 	}
-	function zoom(delta: number) { scale = Math.max(0.2, Math.min(2, scale + delta)); }
+	function zoom(delta: number, anchorX = (viewport?.clientWidth ?? 0) / 2, anchorY = (viewport?.clientHeight ?? 0) / 2) {
+		const next = Math.max(0.2, Math.min(2, scale + delta));
+		x = anchorX - (anchorX - x) * next / scale;
+		y = anchorY - (anchorY - y) * next / scale;
+		scale = next;
+	}
+	function startPan(event: PointerEvent) {
+		if (event.button !== 0 || pointerId !== null) return;
+		pointerId = event.pointerId;
+		suppressClick = false;
+		lastX = event.clientX; lastY = event.clientY;
+	}
+	function movePan(event: PointerEvent) {
+		if (event.pointerId !== pointerId) return;
+		const dx = event.clientX - lastX;
+		const dy = event.clientY - lastY;
+		// Preserve ordinary topic clicks; capture only once a real drag begins.
+		if (!dragging && Math.hypot(dx, dy) < 4) return;
+		if (!dragging) {
+			dragging = true;
+			suppressClick = true;
+			followLatest = false;
+			viewport?.setPointerCapture(event.pointerId);
+		}
+		x += dx; y += dy;
+		lastX = event.clientX; lastY = event.clientY;
+	}
+	function endPan(event: PointerEvent) {
+		if (event.pointerId !== pointerId) return;
+		pointerId = null;
+		dragging = false;
+		if (viewport?.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
+	}
 	function focusNode(id: string) {
 		const item = graph.nodes.find((item) => item.node.id === id);
 		if (!item || !viewport) return;
@@ -93,28 +128,40 @@
 	</div>
 	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-3 py-1.5 text-[11px] text-zinc-500 dark:border-zinc-800">
 		<span>{view === 'organized' ? 'Compact top-to-bottom branches · all topics retained' : 'Top-to-bottom topic discovery order'}{!live ? ' · snapshot, not a replay' : ''}. Dashed arrows return to an earlier topic.</span>
-		{#if live && view === 'live'}<label class="flex items-center gap-1"><input type="checkbox" bind:checked={followLatest} onchange={() => { lastFollowedId = null; }} /> Follow newest topic</label>{/if}
+		{#if view === 'live'}<label class="flex items-center gap-1"><input type="checkbox" checked={followLatest} onchange={(event) => {
+			followLatest = event.currentTarget.checked;
+			lastFollowedId = null;
+			if (followLatest) selectedId = null;
+		}} /> Follow latest topic</label>{/if}
 	</div>
 	<div class="relative flex min-h-0 flex-1">
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (Interactive graph surface implements arrow-key panning and keyboard zoom; topic buttons remain keyboard accessible.) -->
 		<div
 			bind:this={viewport}
 			role="application" aria-label="Conversation flow canvas. Drag to pan, use arrow keys to move, and plus or minus to zoom." tabindex="0"
-			class="relative min-h-96 min-w-0 flex-1 touch-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+			class="relative min-h-96 min-w-0 flex-1 touch-none select-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-blue-400 {dragging ? 'cursor-grabbing' : 'cursor-grab'}"
 			style="background-image: radial-gradient(#a1a1aa55 1px, transparent 1px); background-size: 22px 22px;"
-			onpointerdown={(event) => {
-				if (event.button !== 0 || (event.target as HTMLElement).closest?.('button')) return;
+			onpointerdown={startPan}
+			onpointermove={movePan}
+			onpointerup={endPan}
+			onpointercancel={endPan}
+			onlostpointercapture={endPan}
+			onpointerleave={(event) => { if (!dragging) endPan(event); }}
+			onclickcapture={(event) => {
+				if (suppressClick && event.detail !== 0) { event.preventDefault(); event.stopPropagation(); }
+			}}
+			onwheel={(event) => {
+				event.preventDefault();
 				followLatest = false;
-				dragging = true; lastX = event.clientX; lastY = event.clientY;
-				event.currentTarget.setPointerCapture(event.pointerId);
+				const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? event.currentTarget.clientHeight : 1;
+				if (event.ctrlKey || event.metaKey) {
+					const rect = event.currentTarget.getBoundingClientRect();
+					zoom(-event.deltaY * unit * 0.005, event.clientX - rect.left, event.clientY - rect.top);
+				} else {
+					x -= (event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX) * unit;
+					y -= (event.shiftKey && !event.deltaX ? 0 : event.deltaY) * unit;
+				}
 			}}
-			onpointermove={(event) => {
-				if (!dragging) return;
-				x += event.clientX - lastX; y += event.clientY - lastY;
-				lastX = event.clientX; lastY = event.clientY;
-			}}
-			onpointerup={() => dragging = false}
-			onpointercancel={() => dragging = false}
 			onkeydown={(event) => {
 				if (event.target !== viewport) return;
 				if (event.key === '+') zoom(0.1); else if (event.key === '-') zoom(-0.1);
@@ -138,7 +185,7 @@
 						{/each}
 					</svg>
 					{#each graph.nodes as { node, x: nx, y: ny } (node.id)}
-						<button class="absolute overflow-hidden rounded-xl border bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-lg focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-zinc-900 {selectedId === node.id ? 'border-blue-500' : 'border-zinc-200 dark:border-zinc-700'}"
+						<button class="absolute cursor-inherit overflow-hidden rounded-xl border bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-lg focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-zinc-900 {selectedId === node.id ? 'border-blue-500' : 'border-zinc-200 dark:border-zinc-700'}"
 							style:left={`${nx}px`} style:top={`${ny}px`} style:width={`${CARD_WIDTH}px`} style:height={`${graph.cardHeight}px`}
 							onclick={() => { selectedId = node.id; followLatest = false; }}>
 							<h3 class="line-clamp-2 text-sm font-semibold">{node.title}</h3>
