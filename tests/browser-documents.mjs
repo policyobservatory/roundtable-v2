@@ -15,6 +15,12 @@ const meeting = { id: '00000000-0000-4000-8000-000000000001', title: 'Browser re
 const docs = [{ id: 'HB-1_s1', title: 'HB-1 · Retention', content: 'Keep records only as necessary.', url: 'https://example.org/provision', source_url: 'https://example.org/original.pdf', bill_status: 'Pending' }];
 const jobs = new Map();
 let submissions = 0;
+let retries = 0;
+let includeTimestamps = true;
+const transcriptSegments = [
+ { id: 's1', segment_index: 0, text: 'Privacy discussion', created_at: '2026-09-14T09:00:10.000Z' },
+ { id: 's2', segment_index: 1, text: 'Budget discussion', created_at: '2026-09-14T09:00:20.000Z' }
+];
 const server = createServer(async (req, res) => {
  try {
   const url = new URL(req.url, 'http://localhost');
@@ -26,7 +32,7 @@ const server = createServer(async (req, res) => {
     submissions++;
     let text = ''; for await (const chunk of req) text += chunk;
     const body = JSON.parse(text); const references = [];
-    assert.equal(body.retry, false, 'The UI must not request document retries');
+    if (body.retry) { retries++; assert.deepEqual(body.nodes.map(n => n.id), ['privacy'], 'Only the selected failed card is retried'); }
     for (const node of body.nodes) {
      const fp = await referenceFingerprint(node);
      if (!jobs.has(fp)) jobs.set(fp, { id: fp, fingerprint: fp, generation: 0, status: 'queued', documents: [], updated_at: new Date().toISOString(), topic: node.id });
@@ -38,12 +44,12 @@ const server = createServer(async (req, res) => {
    }
    const references = url.searchParams.get('fingerprints').split(',').map((fp) => {
     const job = jobs.get(fp);
-    if (job.status === 'queued') Object.assign(job, job.topic === 'privacy' ? { status: 'error', error: 'Test upstream HTTP 500' } : job.topic === 'general' ? { status: 'empty', documents: [] } : { status: 'ready', documents: docs });
+    if (job.status === 'queued') Object.assign(job, job.topic === 'privacy' && job.generation === 0 ? { status: 'error', error: 'Test upstream HTTP 500' } : job.topic === 'general' ? { status: 'empty', documents: [] } : { status: 'ready', documents: docs });
     job.updated_at = new Date().toISOString(); return job;
    });
    return json({ references });
   }
-  if (url.pathname.startsWith('/api/meetings/')) return json({ meeting, transcript: 'Privacy and budget discussion', chunks: [] });
+  if (url.pathname.startsWith('/api/meetings/')) return json({ meeting, transcript: 'Imported notes\nPrivacy discussion\nBudget discussion', baseTranscript: 'Imported notes', segments: includeTimestamps ? transcriptSegments : [], chunks: [] });
   const path = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\//, '');
   if (path.includes('..')) { res.statusCode = 400; return res.end(); }
   const data = await readFile(join(root, 'dist', path));
@@ -77,6 +83,14 @@ try {
  await waitFor(`document.querySelector('[aria-label="Canvas view"]')`);
  assert.equal(await evaluate(`document.querySelector('[aria-label="Canvas view"] [aria-pressed="true"]').textContent`), 'Organized canvas');
  assert.equal(await evaluate(`Array.from(document.querySelectorAll('span')).find(s => s.classList.contains('rounded-full') && s.textContent.includes('completed'))?.textContent.trim()`), 'completed', 'Status badge has no stray brace');
+ await waitFor(`document.querySelectorAll('[aria-label="Timestamped transcript"] time').length === 2`);
+ assert.equal(await evaluate(`document.querySelector('[aria-label="Timestamped transcript"] time').getAttribute('datetime')`), transcriptSegments[0].created_at);
+ assert.equal(await evaluate(`document.body.innerText.includes('Imported notes · no segment timestamp')`), true);
+ await click('Plain text');
+ assert.equal(await evaluate(`document.querySelector('[aria-label="Timestamped transcript"]')`), null);
+ assert.equal(await evaluate(`document.body.innerText.includes('Imported notes\\nPrivacy discussion\\nBudget discussion')`), true);
+ await click('Timestamps');
+ await waitFor(`document.querySelectorAll('[aria-label="Timestamped transcript"] time').length === 2`);
  await click('Chat');
  await waitFor(`document.querySelector('textarea[placeholder="Ask something..."]')`);
  await evaluate(`(() => { const input = document.querySelector('textarea[placeholder="Ask something..."]'); input.value = 'Summarize the meeting'; input.dispatchEvent(new Event('input', { bubbles: true })); input.closest('form').requestSubmit(); })()`);
@@ -88,30 +102,33 @@ try {
  assert.equal(await evaluate(`!!window.markdownInjected || !!document.querySelector('.markdown script, .markdown a[href^="javascript:"]')`), false);
  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.markdown ul')).listStyleType`), 'disc');
  await click('Hide chat');
- const assertQuiet = async () => assert.equal(await evaluate(`/No matching documents|0 documents|Document search|Retry document|Finding related|Document lookup/.test(document.body.innerText)`), false);
- await assertQuiet();
- await waitFor(`document.body.innerText.includes('1 related provision')`);
- for (const title of ['Data privacy', 'General discussion']) {
-  await evaluate(`Array.from(document.querySelectorAll('button')).find(b => b.querySelector('h3')?.textContent === ${JSON.stringify(title)}).click()`);
-  await new Promise((r) => setTimeout(r, 100));
-  assert.equal(await evaluate(`!!document.querySelector('[aria-label="Related policy documents"]')`), false, 'No reference section for errors/empty results');
-  await assertQuiet();
- }
+ await waitFor(`document.querySelector('[data-topic-card="budget"] a')`);
+ assert.equal(await evaluate(`document.querySelector('[data-topic-card="budget"] a').textContent`), docs[0].title, 'Documents are listed directly on topic cards');
+ assert.equal(await evaluate(`document.querySelector('[data-topic-card="budget"] a').getAttribute('href')`), docs[0].source_url);
+ assert.equal(await evaluate(`document.querySelector('[data-topic-card="privacy"]').textContent.includes('Document search failed')`), true);
+ assert.equal(await evaluate(`document.querySelector('[data-topic-card="general"]').textContent.includes('No matching documents found')`), true);
+ assert.equal(await evaluate(`document.querySelectorAll('[data-topic-card="privacy"] a, [data-topic-card="general"] a').length`), 0, 'Failed and empty lookups never fabricate links');
+ assert.equal(retries, 0, 'Terminal failures are not automatically retried');
+ await evaluate(`document.querySelector('[data-topic-card="privacy"] button').click()`);
+ await waitFor(`document.body.innerText.includes('Test upstream HTTP 500')`);
+ await click('Retry document search');
+ await waitFor(`document.querySelector('[data-topic-card="privacy"] a')`);
+ assert.equal(retries, 1, 'An explicit retry requeues the failed job');
  await evaluate(`Array.from(document.querySelectorAll('button')).find(b => b.querySelector('h3')?.textContent === 'Budget').click()`);
  await waitFor(`document.body.innerText.includes('Original document')`);
  assert.equal(await evaluate(`Array.from(document.querySelectorAll('a')).find(a => a.textContent.includes('Original document')).getAttribute('rel')`), 'noopener noreferrer');
  const beforeToggle = submissions;
  await click('Live graph'); await new Promise((r) => setTimeout(r, 2500));
  assert.equal(submissions, beforeToggle, 'Switching views must not requeue empty or completed results');
- await assertQuiet();
- const tops = await evaluate(`Array.from(document.querySelectorAll('button')).filter(b => b.querySelector('h3')).map(b => parseFloat(b.style.top))`);
+ assert.equal(await evaluate(`document.querySelectorAll('[data-topic-card="budget"] a').length`), 1, 'Document list survives layout changes');
+ const tops = await evaluate(`Array.from(document.querySelectorAll('[data-topic-card]')).map(b => parseFloat(b.style.top))`);
  assert.ok(tops[1] > tops[0]);
  await evaluate(`document.querySelector('button[title="Close topic details"]')?.click()`);
  const canvas = `document.querySelector('[role="application"]')`;
  const follow = `Array.from(document.querySelectorAll('label')).find(l => l.textContent.includes('Follow latest topic')).querySelector('input')`;
  const transform = () => evaluate(`${canvas}.querySelector('div[style*="transform"]').style.transform`);
  const assertCentered = async () => {
-  const distance = await evaluate(`(() => { const v = ${canvas}.getBoundingClientRect(); const n = Array.from(${canvas}.querySelectorAll('button')).at(-1).getBoundingClientRect(); return Math.hypot(n.x + n.width / 2 - v.x - v.width / 2, n.y + n.height / 2 - v.y - v.height / 2); })()`);
+  const distance = await evaluate(`(() => { const v = ${canvas}.getBoundingClientRect(); const n = Array.from(${canvas}.querySelectorAll('[data-topic-card]')).at(-1).getBoundingClientRect(); return Math.hypot(n.x + n.width / 2 - v.x - v.width / 2, n.y + n.height / 2 - v.y - v.height / 2); })()`);
   assert.ok(distance < 2, 'Latest topic is centered');
  };
  const refollow = async () => {
@@ -152,12 +169,18 @@ try {
  const screenshot = await command('Page.captureScreenshot', { format: 'png' });
  await writeFile(join(tmpdir(), 'roundtable-documents-ui.png'), Buffer.from(screenshot.data, 'base64'));
  await click('New transcript');
+ includeTimestamps = false;
+ await waitFor(`document.body.innerText.includes('Browser reference test')`);
+ await evaluate(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Browser reference test')).click()`);
+ await waitFor(`document.body.innerText.includes('No segment timestamps were saved')`);
+ assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Timestamped transcript"] time').length`), 0, 'No invented timestamps for older or uploaded transcripts');
+ await click('New transcript');
  await waitFor(`document.body.innerText.includes('Share browser tab audio')`);
  await click('Share browser tab audio');
  await waitFor(`document.querySelector('#live-audio-source')?.value === 'tab'`);
  assert.equal(await evaluate(`document.querySelector('#live-speech-language').value`), 'fil-en');
  assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
- console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'quiet pending/error/empty states', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
+ console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'visible failed/empty states', 'explicit document retry', 'document lists on cards', 'timestamp/plain-text transcript toggle', 'legacy transcript fallback', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
 } finally {
  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
  await new Promise((r) => setTimeout(r, 500));
