@@ -12,9 +12,9 @@ const ROW_GAP = 110;
 /** Live order never snakes or reflows existing topics. Organized view ranks dependencies
  * top-to-bottom, packing branches into at most three columns. Cycles are broken only for
  * positioning: every real edge is retained, with return links routed around the cards. */
-export function layoutGraph(map: MeetingMap, view: GraphView = 'live') {
+export function layoutGraph(map: MeetingMap, view: GraphView = 'live', documentSpace = 0) {
 	const flat = flattenMap(map);
-	const cardHeight = view === 'organized' ? COMPACT_CARD_HEIGHT : CARD_HEIGHT;
+	const cardHeight = (view === 'organized' ? COMPACT_CARD_HEIGHT : CARD_HEIGHT) + documentSpace;
 	const rows: typeof flat.nodes[] = [];
 	if (view === 'live') {
 		rows.push(...flat.nodes.map((node) => [node]));

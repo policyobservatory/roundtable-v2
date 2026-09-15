@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { searchDocuments, documentApiBase, DocumentApiError } from '../shared/docs.ts';
-import { referenceFingerprint, referenceRevision, referenceQuery, safeDocumentUrl, linkedDocuments, referenceLabel } from '../shared/document-references.ts';
+import { referenceFingerprint, referenceRevision, referenceQuery, safeDocumentUrl, linkedDocuments, referenceLabel, referenceStatusText } from '../shared/document-references.ts';
 import { parseEnv } from '../shared/env.ts';
 
 const provision = { meta: { section_id: 'HB-00058_s33', bill_id: 'HB-00058', section_title: 'Powers and duties' }, body: 'The bureau shall perform these duties.' };
@@ -78,7 +78,7 @@ test('optional bill lookup failure retains provisions; links reject script URLs'
 	assert.equal(safeDocumentUrl('https://example.org/test'), 'https://example.org/test');
 });
 
-test('cards show no document UI for absent, pending, empty, failed or unlinkable results', () => {
+test('only successful linkable results contribute document links and counts', () => {
 	for (const reference of [undefined, ...['pending', 'queued', 'searching', 'empty', 'error', 'ready'].map((status) => ({ status, documents: [] }))]) {
 		assert.equal(referenceLabel(reference), '');
 		assert.deepEqual(linkedDocuments(reference), []);
@@ -88,6 +88,17 @@ test('cards show no document UI for absent, pending, empty, failed or unlinkable
 	const valid = { id: 'valid', url: 'https://example.org/provision' };
 	assert.deepEqual(linkedDocuments({ status: 'ready', documents: [unsafe, valid] }), [valid]);
 	assert.equal(referenceLabel({ status: 'ready', documents: [unsafe, valid] }), '1 related provision');
+});
+
+test('document status distinguishes queued, searching, empty, failed and unusable results', () => {
+	assert.match(referenceStatusText(), /Waiting to queue/);
+	for (const status of ['pending', 'queued']) assert.match(referenceStatusText({ status }), /queued/);
+	assert.match(referenceStatusText({ status: 'searching' }), /Searching/);
+	assert.match(referenceStatusText({ status: 'pending', error: 'HTTP 500' }), /retrying/);
+	assert.match(referenceStatusText({ status: 'error' }), /failed/);
+	assert.match(referenceStatusText({ status: 'empty' }), /No matching/);
+	assert.match(referenceStatusText({ status: 'ready', documents: [] }), /No usable/);
+	assert.equal(referenceStatusText({ status: 'ready', documents: [{ url: 'https://example.org' }] }), '1 related provision');
 });
 
 test('content revisions survive card ID/layout changes but change with topic meaning', async () => {

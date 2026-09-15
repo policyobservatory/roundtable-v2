@@ -87,10 +87,12 @@ async function processDocumentMessage(message: Message<ReferenceMessage>, env: R
 	if (!job) job = await retryIdempotent(() => env.DB.prepare('SELECT * FROM document_jobs WHERE id = ? AND lease_token = ?').bind(body.jobId, token).first<JobRow>());
 	if (!job) { message.ack(); return; } // completed, stale generation, deleted, or another consumer owns the lease
 	try {
+		console.info(JSON.stringify({ event: 'document_search_started', jobId: job.id, attempt: job.attempts }));
 		const documents = await searchDocuments(job.query, env);
 		await retryIdempotent(() => env.DB.prepare(`UPDATE document_jobs SET status = ?, documents = ?, error = NULL,
 			lease_token = NULL, lease_until = 0, updated_at = ? WHERE id = ? AND generation = ? AND lease_token = ?`)
 			.bind(documents.length ? 'ready' : 'empty', JSON.stringify(documents), new Date().toISOString(), job!.id, job!.generation, token).run());
+		console.info(JSON.stringify({ event: 'document_search_finished', jobId: job.id, matches: documents.length }));
 		message.ack();
 	} catch (error) {
 		const terminal = (error instanceof DocumentApiError && !error.retryable) || job.attempts >= MAX_ATTEMPTS;
@@ -99,7 +101,7 @@ async function processDocumentMessage(message: Message<ReferenceMessage>, env: R
 		await retryIdempotent(() => env.DB.prepare(`UPDATE document_jobs SET status = ?, error = ?, lease_token = NULL,
 			lease_until = 0, dispatch_after = ?, updated_at = ? WHERE id = ? AND generation = ? AND lease_token = ?`)
 			.bind(terminal ? 'error' : 'pending', detail, Date.now() + delaySeconds * 1000, new Date().toISOString(), job!.id, job!.generation, token).run());
-		console.warn(JSON.stringify({ event: 'document_search_failed', jobId: job.id, attempt: job.attempts, terminal }));
+		console.warn(JSON.stringify({ event: 'document_search_failed', jobId: job.id, attempt: job.attempts, terminal, detail }));
 		if (terminal) message.ack(); else message.retry({ delaySeconds });
 	}
 }

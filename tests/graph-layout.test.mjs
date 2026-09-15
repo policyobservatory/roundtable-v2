@@ -31,6 +31,17 @@ for (const view of ['live', 'organized']) {
 	});
 }
 
+test('document lists reserve space without overlapping cards or disconnecting edges', () => {
+	for (const view of ['live', 'organized']) {
+		const map = { nodes: ['a', 'b'].map(node), edges: [edge('a', 'b')] };
+		const plain = layoutGraph(map, view);
+		const withDocuments = layoutGraph(map, view, 132);
+		assert.equal(withDocuments.cardHeight, plain.cardHeight + 132);
+		assert.ok(withDocuments.nodes[1].y > withDocuments.nodes[0].y + withDocuments.cardHeight);
+		assert.ok(withDocuments.edges[0].path.startsWith(`M ${withDocuments.nodes[0].x + CARD_WIDTH / 2} ${withDocuments.nodes[0].y + withDocuments.cardHeight}`));
+	}
+});
+
 test('organized view ranks real dependencies, even when input nodes are out of order', () => {
 	const map = { nodes: ['end', 'left', 'start', 'right'].map(node), edges: [edge('start', 'left'), edge('start', 'right'), edge('left', 'end'), edge('right', 'end')] };
 	const graph = layoutGraph(map, 'organized');

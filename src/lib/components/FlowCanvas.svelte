@@ -3,7 +3,7 @@
 	import { untrack } from 'svelte';
 	import type { MeetingMap } from '$shared/types';
 	import { flattenMap } from '$shared/meeting-map';
-	import { referenceLabel, referenceRevision, type DocumentReference } from '$shared/document-references';
+	import { referenceRevision, type DocumentReference } from '$shared/document-references';
 	import { createDocumentReferences } from '$lib/document-references';
 	import { queueDocumentReferences, pollDocumentReferences } from '$lib/api';
 	import TopicReferences from './TopicReferences.svelte';
@@ -12,22 +12,25 @@
 
 	let { map, meetingId, updating = false, view = $bindable<GraphView>('live'), live = false }: { map: MeetingMap; meetingId?: string; updating?: boolean; view?: GraphView; live?: boolean } = $props();
 	let references = $state<Record<string, DocumentReference>>({});
+	let documentError = $state('');
 	let documentController = $state<ReturnType<typeof createDocumentReferences> | null>(null);
 	$effect(() => {
 		const id = meetingId;
 		references = {};
+		documentError = '';
 		if (!id) { documentController = null; return; }
 		const controller = createDocumentReferences({
 			ensure: (nodes, retry, signal) => queueDocumentReferences(id, nodes, retry, signal),
 			poll: (fingerprints, signal) => pollDocumentReferences(id, fingerprints, signal),
 			onChange: (next) => { references = next; },
-			onError: () => { /* Optional document enrichment must not interrupt or clutter the meeting. */ }
+			onError: (message) => { documentError = message; }
 		});
 		documentController = controller;
 		return () => controller.dispose();
 	});
 	$effect(() => { documentController?.update(flattenMap(map).nodes); });
-	const graph = $derived(layoutGraph(map, view));
+	const documentSpace = $derived(meetingId ? 132 : 0);
+	const graph = $derived(layoutGraph(map, view, documentSpace));
 	let followLatest = $state(true);
 	let scale = $state(0.8);
 	let x = $state(0);
@@ -74,8 +77,9 @@
 	}
 	function startPan(event: PointerEvent) {
 		if (event.button !== 0 || pointerId !== null) return;
-		pointerId = event.pointerId;
 		suppressClick = false;
+		if ((event.target as Element).closest('[data-document-links]')) return;
+		pointerId = event.pointerId;
 		lastX = event.clientX; lastY = event.clientY;
 	}
 	function movePan(event: PointerEvent) {
@@ -151,6 +155,7 @@
 				if (suppressClick && event.detail !== 0) { event.preventDefault(); event.stopPropagation(); }
 			}}
 			onwheel={(event) => {
+				if ((event.target as Element).closest('[data-document-links]')) return;
 				event.preventDefault();
 				followLatest = false;
 				const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? event.currentTarget.clientHeight : 1;
@@ -185,14 +190,17 @@
 						{/each}
 					</svg>
 					{#each graph.nodes as { node, x: nx, y: ny } (node.id)}
-						<button class="absolute cursor-inherit overflow-hidden rounded-xl border bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-lg focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-zinc-900 {selectedId === node.id ? 'border-blue-500' : 'border-zinc-200 dark:border-zinc-700'}"
-							style:left={`${nx}px`} style:top={`${ny}px`} style:width={`${CARD_WIDTH}px`} style:height={`${graph.cardHeight}px`}
-							onclick={() => { selectedId = node.id; followLatest = false; }}>
-							<h3 class="line-clamp-2 text-sm font-semibold">{node.title}</h3>
-							<p class="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400 {view === 'organized' ? 'line-clamp-2' : 'line-clamp-3'}">{node.summary}</p>
-							<p class="mt-3 text-[10px] text-blue-600 dark:text-blue-400">{node.decisions?.length ?? 0} decisions · {node.actions?.length ?? 0} actions · {node.concerns?.length ?? 0} concerns</p>
-							{#if meetingId && referenceLabel(references[referenceRevision(node)])}<p class="absolute bottom-3 left-4 right-4 truncate text-[10px] text-zinc-500">{referenceLabel(references[referenceRevision(node)])}</p>{/if}
-						</button>
+						<div data-topic-card={node.id} class="absolute overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-lg dark:bg-zinc-900 {selectedId === node.id ? 'border-blue-500' : 'border-zinc-200 dark:border-zinc-700'}"
+							style:left={`${nx}px`} style:top={`${ny}px`} style:width={`${CARD_WIDTH}px`} style:height={`${graph.cardHeight}px`}>
+							<button class="block w-full cursor-inherit overflow-hidden p-4 text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500" style:height={`${graph.cardHeight - documentSpace}px`} onclick={() => { selectedId = node.id; followLatest = false; }}>
+								<h3 class="line-clamp-2 text-sm font-semibold">{node.title}</h3>
+								<p class="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400 {view === 'organized' ? 'line-clamp-2' : 'line-clamp-3'}">{node.summary}</p>
+								<p class="mt-3 text-[10px] text-blue-600 dark:text-blue-400">{node.decisions?.length ?? 0} decisions · {node.actions?.length ?? 0} actions · {node.concerns?.length ?? 0} concerns</p>
+							</button>
+							{#if meetingId}<div data-document-links class="cursor-auto overflow-y-auto overscroll-contain border-t border-zinc-200 p-3 dark:border-zinc-700" style:height={`${documentSpace}px`}>
+								<TopicReferences reference={references[referenceRevision(node)]} transportError={documentError} compact />
+							</div>{/if}
+						</div>
 					{/each}
 				</div>
 			{/if}
@@ -204,7 +212,7 @@
 				{#each [{ title: 'Decisions', items: selected.decisions }, { title: 'Action items', items: selected.actions }, { title: 'Concerns', items: selected.concerns }] as section}
 					{#if section.items?.length}<h4 class="mt-5 text-xs font-semibold">{section.title}</h4><ul class="mt-2 list-disc space-y-2 pl-4 text-xs">{#each section.items as item}<li>{item}</li>{/each}</ul>{/if}
 				{/each}
-				{#if meetingId}<TopicReferences reference={references[referenceRevision(selected)]} />{/if}
+				{#if meetingId}<TopicReferences reference={references[referenceRevision(selected)]} transportError={documentError} onRetry={() => { if (selected) documentController?.retry(selected); }} />{/if}
 			</aside>
 		{/if}
 	</div>

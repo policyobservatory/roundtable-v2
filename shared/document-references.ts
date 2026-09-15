@@ -45,10 +45,19 @@ export async function referenceFingerprint(topic: Pick<ReferenceTopic, 'title' |
 export function referencePending(reference?: DocumentReference) {
 	return !!reference && ['pending', 'queued', 'searching'].includes(reference.status);
 }
-/** References are optional enrichment: show nothing until there is something safe to link. */
+/** Only expose safe links from successful searches; status is displayed separately. */
 export function linkedDocuments(reference?: DocumentReference): DocumentResult[] {
 	if (reference?.status !== 'ready') return [];
 	return reference.documents.filter((document) => safeDocumentUrl(document.source_url) || safeDocumentUrl(document.url) || safeDocumentUrl(document.bill_url));
+}
+export function referenceStatusText(reference?: DocumentReference) {
+	if (!reference) return 'Waiting to queue document search…';
+	if (reference.status === 'error') return 'Document search failed';
+	if (reference.status === 'empty') return 'No matching documents found';
+	if (reference.status === 'searching') return 'Searching Policy Observatory…';
+	if (reference.status === 'pending' && reference.error) return 'Document search interrupted; retrying…';
+	if (referencePending(reference)) return 'Document search queued…';
+	return linkedDocuments(reference).length ? referenceLabel(reference) : 'No usable document links returned';
 }
 export function referenceLabel(reference?: DocumentReference) {
 	const count = linkedDocuments(reference).length;
