@@ -60,6 +60,6 @@
 			</aside>
 		{/if}
 		<div class="min-h-0 min-w-0 flex-1"><FlowCanvas meetingId={meeting.id} map={meeting.map ?? { nodes: [], edges: [] }} updating={retrying} view="organized" /></div>
-		{#if showChat}<ChatPanel meetingId={meeting.id} provider={meeting.provider} model={meeting.model} />{/if}
+		{#if showChat}{#key meeting.id}<ChatPanel meetingId={meeting.id} provider={meeting.provider} model={meeting.model} />{/key}{/if}
 	</div>
 </div>

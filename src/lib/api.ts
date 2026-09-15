@@ -2,6 +2,7 @@ import type { AIProvider, Meeting, MeetingMap, Segment, STTProvider, TranscriptS
 import type { AnalysisEvent } from '$shared/analysis';
 import type { SpeechLanguage } from '$shared/speech-settings';
 import type { ReferenceTopic, ReferenceAssignment, DocumentReference } from '$shared/document-references';
+import type { ChatSession, ChatSessionData, SendChatTurn } from '$shared/chat-types';
 
 const base = '';
 
@@ -106,6 +107,24 @@ export async function pollDocumentReferences(meetingId: string, fingerprints: st
 		signal: AbortSignal.any([signal, AbortSignal.timeout(15000)])
 	});
 	return ((await res.json()) as { references: DocumentReference[] }).references;
+}
+
+const chatPath = (meetingId: string, sessionId?: string) => `/api/meetings/${encodeURIComponent(meetingId)}/chats${sessionId ? '/' + encodeURIComponent(sessionId) : ''}`;
+
+export async function listChatSessions(meetingId: string, offset = 0, signal?: AbortSignal) {
+	return (await api(`${chatPath(meetingId)}?offset=${offset}`, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000) })).json() as Promise<{ sessions: ChatSession[]; hasMore: boolean }>;
+}
+export async function createChatSession(meetingId: string, data: { id: string; title?: string; provider: AIProvider; model: string }) {
+	return (await api(chatPath(meetingId), { method: 'POST', body: JSON.stringify(data), signal: AbortSignal.timeout(20000) })).json() as Promise<ChatSession>;
+}
+export async function getChatSession(meetingId: string, sessionId: string, before?: number, signal?: AbortSignal) {
+	return (await api(`${chatPath(meetingId, sessionId)}${before ? `?before=${before}` : ''}`, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000) })).json() as Promise<ChatSessionData>;
+}
+export async function deleteChatSession(meetingId: string, sessionId: string) {
+	await api(chatPath(meetingId, sessionId), { method: 'DELETE', signal: AbortSignal.timeout(20000) });
+}
+export async function sendChatTurn(meetingId: string, sessionId: string, data: SendChatTurn) {
+	return (await api(`${chatPath(meetingId, sessionId)}/messages`, { method: 'POST', body: JSON.stringify(data), signal: AbortSignal.timeout(105000) })).json() as Promise<ChatSessionData>;
 }
 
 export async function chat(data: {

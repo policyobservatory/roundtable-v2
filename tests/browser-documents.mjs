@@ -18,6 +18,8 @@ let submissions = 0;
 let holdReferences = true;
 let includeTimestamps = true;
 const chatRequests = [];
+const chats = new Map();
+let failNextChat = false;
 let releaseChat;
 const transcriptSegments = [
  { id: 's1', segment_index: 0, text: 'Privacy discussion', created_at: '2026-09-14T09:00:10.000Z' },
@@ -28,11 +30,30 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const json = (data) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)); };
   if (url.pathname === '/api/meetings') return json([meeting]);
-  if (url.pathname === '/api/chat') {
-   let text = ''; for await (const chunk of req) text += chunk;
-   chatRequests.push(JSON.parse(text));
-   await new Promise(resolve => { releaseChat = resolve; });
-   return json({ content: '# Meeting summary\n\n**Approved** the budget.\n\n- Assign an owner\n- Follow up\n\n```js\nconst budget = 100;\n```\n\n| Topic | Owner |\n| --- | --- |\n| Budget | Alex |\n\n[Policy](https://example.org)\n\n<script>window.markdownInjected = true</script>\n\n[unsafe](javascript:alert%281%29)' });
+  const chatRoute = url.pathname.match(/^\/api\/meetings\/[^/]+\/chats(?:\/([^/]+))?(\/messages)?$/);
+  if (chatRoute) {
+   let body; if (req.method === 'POST') { let text = ''; for await (const chunk of req) text += chunk; body = JSON.parse(text); }
+   if (!chatRoute[1]) {
+    if (req.method === 'GET') return json({ sessions: [...chats.values()].map(c => c.session), hasMore: false });
+    if (!chats.has(body.id)) chats.set(body.id, { session: { ...body, title: 'New chat', meeting_id: meeting.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, messages: [], before: null, latestTurn: null });
+    return json(chats.get(body.id).session);
+   }
+   const saved = chats.get(chatRoute[1]);
+   if (!saved) { res.statusCode = 404; return json({ error: 'Chat not found' }); }
+   if (req.method === 'DELETE') { chats.delete(chatRoute[1]); return json({ ok: true }); }
+   if (!chatRoute[2]) return json(saved);
+   chatRequests.push(body);
+   assert.equal(body.messages, undefined, 'Client does not supply trusted history');
+   const now = new Date().toISOString();
+   if (!saved.messages.some(m => m.turn_id === body.id)) saved.messages.push({ id: body.id + ':user', turn_id: body.id, role: 'user', content: body.content, position: saved.messages.length + 1, created_at: now });
+   saved.latestTurn = { ...body, session_id: saved.session.id, status: 'pending', error: null, lease_until: Date.now() + 120000, created_at: now, updated_at: now };
+   saved.session.title = saved.messages[0].content;
+   if (chatRequests.length === 1) await new Promise(resolve => { releaseChat = resolve; });
+   if (failNextChat) { failNextChat = false; saved.latestTurn.status = 'error'; saved.latestTurn.error = 'Test provider failure'; res.statusCode = 502; return json({ error: 'Reply failed; message saved' }); }
+   const content = body.content === 'Summarize the meeting' ? '# Meeting summary\n\n**Approved** the budget.\n\n- Assign an owner\n- Follow up\n\n```js\nconst budget = 100;\n```\n\n| Topic | Owner |\n| --- | --- |\n| Budget | Alex |\n\n[Policy](https://example.org)\n\n<script>window.markdownInjected = true</script>\n\n[unsafe](javascript:alert%281%29)' : 'Saved reply: ' + body.content;
+   saved.messages.push({ id: body.id + ':assistant', turn_id: body.id, role: 'assistant', content, position: saved.messages.length + 1, created_at: now });
+   saved.latestTurn.status = 'complete';
+   return json(saved);
   }
   if (url.pathname.endsWith('/references')) {
    if (req.method === 'POST') {
@@ -99,7 +120,7 @@ try {
  await click('Timestamps');
  await waitFor(`document.querySelectorAll('[aria-label="Timestamped transcript"] time').length === 2`);
  await click('Chat');
- await waitFor(`document.querySelector('textarea[placeholder="Ask something..."]')`);
+ await waitFor(`document.querySelector('textarea[placeholder="Ask something..."]') && !document.querySelector('#chat-ai-model')?.disabled`);
  assert.equal(await evaluate(`!!document.querySelector('input[placeholder="Policy document query (optional)"]')`), false);
  await evaluate(`(() => { const model = document.querySelector('#chat-ai-model'); model.value = 'workers-glm-5-3-flash'; model.dispatchEvent(new Event('change', { bubbles: true })); })()`);
  assert.equal(await evaluate(`!!document.querySelector('#chat-ai-model-description')`), false, 'Removed model note leaves no empty paragraph');
@@ -117,7 +138,7 @@ try {
  await waitFor(`document.querySelector('[data-message-role="user"]')`);
  for (let i = 0; i < 100 && !releaseChat; i++) await new Promise(r => setTimeout(r, 20));
  assert.equal(chatRequests.length, 1, 'Enter sends one message');
- assert.equal(chatRequests[0].doc_query, 'Summarize the meeting', 'Automatic document lookup still uses the question');
+ assert.equal(chatRequests[0].content, 'Summarize the meeting', 'Server receives only the current question and request/model identifiers');
  await setInput('Draft while waiting');
  await evaluate(`${inputSelector}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); ${inputSelector}.closest('form').requestSubmit();`);
  assert.equal(await evaluate(`${inputSelector}.value`), 'Draft while waiting', 'Sending is guarded while a response is pending');
@@ -135,6 +156,41 @@ try {
  assert.equal(await evaluate(`document.querySelector('.markdown a')?.getAttribute('href')`), 'https://example.org');
  assert.equal(await evaluate(`!!window.markdownInjected || !!document.querySelector('.markdown script, .markdown a[href^="javascript:"]')`), false);
  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.markdown ul')).listStyleType`), 'disc');
+ const firstSession = await evaluate(`document.querySelector('#chat-session').value`);
+ await click('Hide chat'); await click('Chat');
+ await waitFor(`document.querySelectorAll('[data-message-role]').length === 2`);
+ assert.equal(await evaluate(`document.querySelector('#chat-session').value`), firstSession, 'Reopening restores the selected chat');
+ await click('New chat');
+ await waitFor(`document.querySelector('#chat-session').value !== ${JSON.stringify(firstSession)} && !document.querySelector('#chat-ai-model').disabled`);
+ const secondSession = await evaluate(`document.querySelector('#chat-session').value`);
+ assert.equal(await evaluate(`document.querySelectorAll('[data-message-role]').length`), 0, 'New chats have independent history');
+ await setInput('Second conversation');
+ await evaluate(`${inputSelector}.closest('form').requestSubmit()`);
+ await waitFor(`document.body.innerText.includes('Saved reply: Second conversation')`);
+ await evaluate(`(() => { const select = document.querySelector('#chat-session'); select.value = ${JSON.stringify(firstSession)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+ await waitFor(`document.querySelector('.markdown h1')?.textContent === 'Meeting summary'`);
+ assert.equal(await evaluate(`document.body.innerText.includes('Second conversation') && Array.from(document.querySelectorAll('[data-message-role]')).some(m => m.textContent.includes('Second conversation'))`), false, 'Switching does not mix message histories');
+ await command('Page.reload');
+ await waitFor(`!document.querySelector('[aria-label="Canvas view"]') && Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('Browser reference test'))`);
+ await evaluate(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Browser reference test')).click()`);
+ await waitFor(`document.querySelector('[aria-label="Canvas view"]')`);
+ await click('Chat');
+ await waitFor(`document.querySelector('.markdown h1')?.textContent === 'Meeting summary'`);
+ assert.equal(await evaluate(`document.querySelector('#chat-session').value`), firstSession, 'Full-page reload restores D1-backed history');
+ failNextChat = true;
+ await setInput('Retry question'); await evaluate(`${inputSelector}.closest('form').requestSubmit()`);
+ await waitFor(`document.body.innerText.includes('Retry message')`);
+ const failedRequest = chatRequests.at(-1).id;
+ await click('Retry message');
+ await waitFor(`document.body.innerText.includes('Saved reply: Retry question')`);
+ assert.equal(chatRequests.at(-1).id, failedRequest, 'Retry reuses the stable turn ID');
+ assert.equal(await evaluate(`Array.from(document.querySelectorAll('[data-message-role="user"]')).filter(m => m.textContent.trim() === 'Retry question').length`), 1);
+ await evaluate(`(() => { const select = document.querySelector('#chat-session'); select.value = ${JSON.stringify(secondSession)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+ await waitFor(`document.body.innerText.includes('Saved reply: Second conversation')`);
+ await evaluate(`(() => { const original = window.confirm; window.confirm = () => true; document.querySelector('button[title="Delete chat"]').click(); window.confirm = original; })()`);
+ await waitFor(`document.querySelectorAll('#chat-session option').length === 1`);
+ assert.equal(chats.has(secondSession), false);
+ assert.equal(await evaluate(`document.body.innerText.includes('Imported notes')`), true, 'Deleting a chat keeps the meeting transcript');
  await click('Hide chat');
  const assertQuiet = async () => assert.equal(await evaluate(`/Document search|No matching documents|Waiting to queue|Searching Policy Observatory|Document service unavailable|Retry document search|HTTP 500/.test(document.body.innerText)`), false);
  await assertQuiet();
@@ -224,7 +280,7 @@ try {
  await waitFor(`document.querySelector('#live-audio-source')?.value === 'tab'`);
  assert.equal(await evaluate(`document.querySelector('#live-speech-language').value`), 'fil-en');
  assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
- console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'left-aligned user chat', 'Enter sends and Shift+Enter inserts newline', 'no duplicate or IME sends', 'removed note and query box', 'compact cards without document whitespace', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'hidden pending/failed/empty document sections', 'document lists on cards', 'timestamp/plain-text transcript toggle', 'legacy transcript fallback', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
+ console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'left-aligned user chat', 'persistent chat reopening and reload', 'multiple isolated chat sessions', 'failed-message retry without duplication', 'delete chat preserves meeting', 'Enter sends and Shift+Enter inserts newline', 'no duplicate or IME sends', 'removed note and query box', 'compact cards without document whitespace', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'hidden pending/failed/empty document sections', 'document lists on cards', 'timestamp/plain-text transcript toggle', 'legacy transcript fallback', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
 } finally {
  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
  await new Promise((r) => setTimeout(r, 500));
