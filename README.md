@@ -12,9 +12,40 @@ A Cloudflare-native meeting analysis app deployed as a **Cloudflare Worker with 
 - **Related documents**: automatic per-card background searches via Cloudflare Queues and Policy Observatory’s `/v1/provisions` API; saved source links in both canvas views
 - **Document chat**: uses the same Policy Observatory search adapter
 
+## Appearance
+
+Use the **Light mode / Dark mode** switch in the meeting workspace header,
+saved-meeting toolbar, or live-meeting screen. Your first visit follows your
+device preference; toggling saves an explicit choice in this browser and syncs
+it across open tabs. The saved theme is applied before first paint. If browser
+storage is blocked, the switch still works for the current visit.
+
+The interface follows [Policy Observatory](https://policyobservatory.org)'s
+editorial design language: Iowan/Palatino/Georgia serif headings, Helvetica body
+text, cool gray-green backgrounds (`#F2F4F3`), charcoal text (`#1C2A2E`), forest
+green actions (`#1F5C4A`), and thin gray-green borders (`#C9D1CE`). There are no
+decorative gradients or gold accents. Dark mode adapts the same palette to
+charcoal surfaces and muted green highlights; it is not a theme copied from the
+reference site. The shared fonts and color tokens are in `src/routes/layout.css`.
+No external font requests are needed, and switching themes does not change
+meeting data or model settings.
+
+## Pricing waitlist
+
+The workspace footer's **Pricing** link opens `/pricing`, where visitors can join
+the launch-discount waitlist with their first name, email, and optional industry.
+The form submits JSON to `POST /api/waitlist`; signups persist in D1's `waitlists`
+table, with duplicate emails handled safely. Apply **`0004_waitlists.sql` before
+deploying** this feature. No launch emails are sent automatically.
+
+See [waitlist setup, API behavior, and operational limits](docs/waitlist.md).
+
 ## Transcript input
 
-Paste a transcript or use **Upload a transcript** on the New Meeting screen.
+New Meeting opens on the **Live meeting** tab. Choose **Transcript** to paste
+text or use the full-width **Upload a transcript** button beneath the text box.
+Switching tabs preserves your draft and selections during the current visit;
+it does not start recording or analysis.
 Supported files are `.txt`, `.md`, `.srt`, and `.vtt`, encoded as UTF-8, up to **5 MB**.
 Subtitle timestamps and speaker labels are preserved. PDF, Word, and audio files are not supported by this upload; export them to a supported text format first.
 

@@ -17,10 +17,14 @@ const jobs = new Map();
 let submissions = 0;
 let holdReferences = true;
 let includeTimestamps = true;
+let showSavedMeetings = true;
 const chatRequests = [];
 const chats = new Map();
 let failNextChat = false;
 let releaseChat;
+const waitlistRequests = [];
+let releaseWaitlist;
+let failWaitlist = true;
 const transcriptSegments = [
  { id: 's1', segment_index: 0, text: 'Privacy discussion', created_at: '2026-09-14T09:00:10.000Z' },
  { id: 's2', segment_index: 1, text: 'Budget discussion', created_at: '2026-09-14T09:00:20.000Z' }
@@ -29,7 +33,15 @@ const server = createServer(async (req, res) => {
  try {
   const url = new URL(req.url, 'http://localhost');
   const json = (data) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)); };
-  if (url.pathname === '/api/meetings') return json([meeting]);
+  if (url.pathname === '/api/waitlist' && req.method === 'POST') {
+   assert.equal(req.headers['content-type'], 'application/json');
+   let text = ''; for await (const chunk of req) text += chunk;
+   waitlistRequests.push(JSON.parse(text));
+   if (waitlistRequests.length === 1) await new Promise(resolve => { releaseWaitlist = resolve; });
+   if (failWaitlist) { failWaitlist = false; res.statusCode = 503; return json({ error: 'We could not save your signup. Please try again shortly.' }); }
+   return json({ ok: true });
+  }
+  if (url.pathname === '/api/meetings') return json(showSavedMeetings ? [meeting] : []);
   const chatRoute = url.pathname.match(/^\/api\/meetings\/[^/]+\/chats(?:\/([^/]+))?(\/messages)?$/);
   if (chatRoute) {
    let body; if (req.method === 'POST') { let text = ''; for await (const chunk of req) text += chunk; body = JSON.parse(text); }
@@ -78,7 +90,7 @@ const server = createServer(async (req, res) => {
    return json({ references });
   }
   if (url.pathname.startsWith('/api/meetings/')) return json({ meeting, transcript: 'Imported notes\nPrivacy discussion\nBudget discussion', baseTranscript: 'Imported notes', segments: includeTimestamps ? transcriptSegments : [], chunks: [] });
-  const path = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\//, '');
+  const path = url.pathname === '/' ? 'index.html' : /^\/pricing\/?$/.test(url.pathname) ? 'pricing.html' : decodeURIComponent(url.pathname).replace(/^\//, '');
   if (path.includes('..')) { res.statusCode = 400; return res.end(); }
   const data = await readFile(join(root, 'dist', path));
   res.setHeader('Content-Type', ({ '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json' })[extname(path)] ?? 'application/octet-stream'); res.end(data);
@@ -105,10 +117,104 @@ try {
  const click = (text) => evaluate(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === ${JSON.stringify(text)})?.click()`);
  await command('Runtime.enable'); await command('Page.enable');
  await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+ const themeSwitch = `document.querySelector('button[role="switch"][aria-label="Dark mode"]')`;
+ const setSystemTheme = value => command('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
+ const assertTheme = async value => {
+  await waitFor(`document.documentElement.dataset.theme === '${value}' && ${themeSwitch}?.getAttribute('aria-checked') === '${value === 'dark'}' && !${themeSwitch}.disabled`);
+  assert.equal(await evaluate(`getComputedStyle(document.documentElement).colorScheme`), value);
+ };
+ const captureTheme = async name => {
+  await new Promise(resolve => setTimeout(resolve, 200)); // Let existing button color transitions settle.
+  const image = await command('Page.captureScreenshot', { format: 'png' });
+  await writeFile(join(tmpdir(), `roundtable-${name}.png`), Buffer.from(image.data, 'base64'));
+ };
+ await setSystemTheme('dark');
  await command('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
  await waitFor(`document.body.innerText.includes('Browser reference test')`);
+ await assertTheme('dark');
+ await setSystemTheme('light');
+ await assertTheme('light'); // No saved choice: follow device changes.
+ await evaluate(`${themeSwitch}.focus()`);
+ await command('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+ await command('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+ await assertTheme('dark');
+ assert.equal(await evaluate(`localStorage.getItem('roundtable-theme')`), 'dark', 'Keyboard toggle saves the choice');
+ await captureTheme('home-dark');
+ await setSystemTheme('dark'); await setSystemTheme('light');
+ await assertTheme('dark'); // Explicit choice overrides OS changes.
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('light');
+ await setSystemTheme('dark');
+ await command('Page.reload');
+ await waitFor(`document.body.innerText.includes('Browser reference test')`);
+ await assertTheme('light'); // Saved light choice wins over a dark OS after reload.
+ assert.equal(await evaluate(`getComputedStyle(document.body).backgroundColor`), 'rgb(242, 244, 243)', 'Light background matches Policy Observatory');
+ assert.equal(await evaluate(`getComputedStyle(document.querySelector('#workspace-heading')).fontFamily.includes('Palatino')`), true, 'Editorial serif headings');
+ assert.equal(await evaluate(`getComputedStyle(document.querySelector('#workspace-heading')).fontWeight`), '400', 'Reference uses regular-weight headings');
+ const assertWorkspaceLayout = async () => {
+  assert.equal(await evaluate(`(() => { const header = document.querySelector('header').getBoundingClientRect(); const title = document.querySelector('header > span').getBoundingClientRect(); const toggle = document.querySelector('header [role="switch"]').getBoundingClientRect(); return Math.abs(header.width - Math.min(1168, document.documentElement.clientWidth)) < 2 && Math.abs(title.left - header.left - 24) < 2 && Math.abs(header.right - toggle.right - 24) < 2; })()`), true, 'Header spans the content width with brand left and theme toggle right');
+  assert.equal(await evaluate(`(() => { const workspace = document.querySelector('#meeting-workspace'); const box = workspace.getBoundingClientRect(); const footer = document.querySelector('footer').getBoundingClientRect(); return Math.abs(box.bottom - footer.top) < 2 && box.width === document.documentElement.clientWidth && getComputedStyle(workspace).backgroundColor === 'rgb(255, 255, 255)'; })()`), true, 'White workspace fills the area through to the footer');
+ };
+ await assertWorkspaceLayout();
+ await captureTheme('home-light');
+ assert.equal(await evaluate(`document.querySelector('[role="tab"][aria-selected="true"]').id`), 'input-tab-live', 'Live meeting is the default first tab');
+ assert.equal(await evaluate(`document.querySelector('[role="tablist"] [role="tab"]').id`), 'input-tab-live');
+ assert.equal(await evaluate(`document.querySelector('#input-panel-transcript').hidden && !document.querySelector('#input-panel-live').hidden`), true);
+ assert.ok(await evaluate(`document.querySelector('#workspace-heading').closest('section').getBoundingClientRect().bottom < 210`), 'Compact header keeps the workspace near the top');
+ await evaluate(`document.querySelector('#input-tab-live').focus()`);
+ await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+ await waitFor(`document.querySelector('#input-tab-transcript').getAttribute('aria-selected') === 'true'`);
+ assert.equal(await evaluate(`document.activeElement.id`), 'input-tab-transcript', 'Arrow keys select and focus the next tab');
+ assert.equal(await evaluate(`document.querySelector('#input-panel-live').hidden && !document.querySelector('#input-panel-transcript').hidden`), true);
+ assert.equal(await evaluate(`document.body.innerText.includes('Share browser tab audio')`), false, 'Live actions are not mixed into the transcript panel');
+ const uploadButton = `Array.from(document.querySelectorAll('#input-panel-transcript button')).find(b => b.textContent.trim() === 'Upload a transcript')`;
+ assert.equal(await evaluate(`(() => { const t = document.querySelector('#meeting-transcript').getBoundingClientRect(); const b = ${uploadButton}.getBoundingClientRect(); return b.top >= t.bottom && Math.abs(b.width - t.width) < 2; })()`), true, 'Upload button is full width beneath the text box');
+ await evaluate(`(() => { const input = document.querySelector('#meeting-transcript'); input.value = 'Draft retained between tabs'; input.dispatchEvent(new Event('input', { bubbles: true })); const model = document.querySelector('#meeting-ai-model'); model.value = 'openrouter-gpt-4o-mini'; model.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+ const draftModel = await evaluate(`document.querySelector('#meeting-ai-model').value`);
+ await click('Live meeting'); await click('Transcript');
+ assert.equal(await evaluate(`document.querySelector('#meeting-transcript').value`), 'Draft retained between tabs');
+ assert.equal(await evaluate(`document.querySelector('#meeting-ai-model').value`), draftModel, 'Tab switching retains model selection');
+ const uploadPath = join(profile, 'meeting.srt');
+ const invalidUploadPath = join(profile, 'meeting.pdf');
+ await writeFile(uploadPath, '1\n00:00:01,000 --> 00:00:04,000\nReview the draft bill.\n');
+ await writeFile(invalidUploadPath, 'Not a supported transcript format');
+ await command('DOM.enable');
+ const documentRoot = await command('DOM.getDocument');
+ const fileNode = await command('DOM.querySelector', { nodeId: documentRoot.root.nodeId, selector: '#transcript-file' });
+ await command('DOM.setFileInputFiles', { nodeId: fileNode.nodeId, files: [uploadPath] });
+ await waitFor(`document.querySelector('#meeting-transcript').value.includes('Review the draft bill.') && document.body.innerText.includes('Loaded meeting.srt')`);
+ assert.equal(await evaluate(`document.querySelector('#meeting-transcript').value.includes('00:00:01,000 --> 00:00:04,000')`), true, 'Upload preserves transcript timestamps');
+ await command('DOM.setFileInputFiles', { nodeId: fileNode.nodeId, files: [invalidUploadPath] });
+ await waitFor(`!!document.querySelector('#input-panel-transcript [role="alert"]')`);
+ assert.equal(await evaluate(`document.querySelector('#meeting-transcript').value.includes('Review the draft bill.')`), true, 'Invalid upload does not overwrite the draft');
+ await command('DOM.setFileInputFiles', { nodeId: fileNode.nodeId, files: [uploadPath] });
+ await waitFor(`document.body.innerText.includes('Loaded meeting.srt') && !document.querySelector('#input-panel-transcript [role="alert"]')`);
+ await captureTheme('transcript-tab');
+ await evaluate(`document.querySelector('#input-tab-transcript').focus()`);
+ await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Home', code: 'Home', windowsVirtualKeyCode: 36 });
+ await waitFor(`document.querySelector('#input-tab-live').getAttribute('aria-selected') === 'true'`);
+ await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+ assert.equal(await evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true, 'Home fits a narrow screen');
+ assert.equal(await evaluate(`(() => { const r = ${themeSwitch}.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; })()`), true, 'Theme switch is visible on mobile');
+ assert.equal(await evaluate(`(() => { const r = Array.from(document.querySelectorAll('#input-panel-live button')).find(b => b.textContent.trim() === 'Share browser tab audio').getBoundingClientRect(); return r.bottom <= innerHeight; })()`), true, 'Live entry actions are visible without scrolling on mobile');
+ await assertWorkspaceLayout();
+ await captureTheme('home-mobile');
+ await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+ // Simulate a choice from another tab; no inference or meeting mutations.
+ await evaluate(`localStorage.setItem('roundtable-theme', 'dark'); window.dispatchEvent(new StorageEvent('storage', { key: 'roundtable-theme', newValue: 'dark', storageArea: localStorage }));`);
+ await assertTheme('dark');
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('light');
  await evaluate(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Browser reference test')).click()`);
  await waitFor(`document.querySelector('[aria-label="Canvas view"]')`);
+ await assertTheme('light');
+ const lightCardColor = await evaluate(`getComputedStyle(document.querySelector('[data-topic-card]')).backgroundColor`);
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('dark');
+ assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('[data-topic-card]')).backgroundColor`), lightCardColor, 'Canvas cards change with theme');
+ await captureTheme('canvas-dark');
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('light');
  assert.equal(await evaluate(`document.querySelector('[aria-label="Canvas view"] [aria-pressed="true"]').textContent`), 'Organized canvas');
  assert.equal(await evaluate(`Array.from(document.querySelectorAll('span')).find(s => s.classList.contains('rounded-full') && s.textContent.includes('completed'))?.textContent.trim()`), 'completed', 'Status badge has no stray brace');
  await waitFor(`document.querySelectorAll('[aria-label="Timestamped transcript"] time').length === 2`);
@@ -156,6 +262,13 @@ try {
  assert.equal(await evaluate(`document.querySelector('.markdown a')?.getAttribute('href')`), 'https://example.org');
  assert.equal(await evaluate(`!!window.markdownInjected || !!document.querySelector('.markdown script, .markdown a[href^="javascript:"]')`), false);
  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.markdown ul')).listStyleType`), 'disc');
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('dark');
+ await captureTheme('chat-dark');
+ assert.equal(await evaluate(`getComputedStyle(document.querySelector('.markdown a')).color === getComputedStyle(document.querySelector('[aria-label="Transcript view"] [aria-pressed="true"]')).color`), true, 'Markdown links use the dark-mode accent');
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('light');
+ await captureTheme('chat-light');
  const firstSession = await evaluate(`document.querySelector('#chat-session').value`);
  await click('Hide chat'); await click('Chat');
  await waitFor(`document.querySelectorAll('[data-message-role]').length === 2`);
@@ -279,8 +392,112 @@ try {
  await click('Share browser tab audio');
  await waitFor(`document.querySelector('#live-audio-source')?.value === 'tab'`);
  assert.equal(await evaluate(`document.querySelector('#live-speech-language').value`), 'fil-en');
+ assert.equal(await evaluate(`document.body.innerText.includes('Whisper with a Tagalog language hint') || document.body.innerText.includes('Audio is transcribed in approximately') || document.body.innerText.includes('A recovery copy of recognized text')`), false, 'Explanations are not shown as paragraphs');
+ const guidance = `document.querySelector('button[aria-label="Language guidance"]')`;
+ assert.equal(await evaluate(`${guidance}.textContent.trim()`), '', 'Guidance trigger is icon-only');
+ assert.equal(await evaluate(`document.querySelector('label[for="live-speech-language"]').parentElement.contains(${guidance})`), true, 'Language help sits beside its label');
+ assert.equal(await evaluate(`document.querySelector('label[for="live-audio-source"]').parentElement.contains(document.querySelector('button[aria-label="Live transcription & privacy"]'))`), true, 'Audio help sits beside its label');
+ const guidancePoint = await evaluate(`(() => { const r = ${guidance}.getBoundingClientRect(); return { x: r.x + 8, y: r.y + 8 }; })()`);
+ await command('Input.dispatchMouseEvent', { type: 'mouseMoved', ...guidancePoint });
+ await waitFor(`document.querySelector('[role="tooltip"]')?.innerText.includes('Nova-3')`);
+ const explanationPoint = await evaluate(`(() => { const r = document.querySelector('[role="tooltip"]').getBoundingClientRect(); return { x: r.x + 10, y: r.y + 10 }; })()`);
+ await command('Input.dispatchMouseEvent', { type: 'mouseMoved', ...explanationPoint });
+ await new Promise(resolve => setTimeout(resolve, 200));
+ assert.equal(await evaluate(`!!document.querySelector('[role="tooltip"]')`), true, 'Tooltip stays open while hovered');
+ await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 });
+ await waitFor(`!document.querySelector('[role="tooltip"]')`);
+ await evaluate(`${guidance}.focus()`);
+ await waitFor(`document.querySelector('[role="tooltip"]')?.innerText.includes('Taglish')`);
+ assert.equal(await evaluate(`${guidance}.getAttribute('aria-describedby') === document.querySelector('[role="tooltip"]').id`), true);
+ await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+ await waitFor(`!document.querySelector('[role="tooltip"]')`);
+ assert.equal(await evaluate(`document.activeElement === ${guidance}`), true, 'Escape dismisses without moving focus');
+ await evaluate(`${guidance}.blur()`);
+ await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+ await command('Emulation.setTouchEmulationEnabled', { enabled: true });
+ const privacyPoint = await evaluate(`(() => { const b = document.querySelector('button[aria-label="Live transcription & privacy"]'); b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return { x: r.x + 10, y: r.y + 10 }; })()`);
+ await new Promise(resolve => setTimeout(resolve, 100));
+ await command('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [privacyPoint] });
+ await command('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+ await waitFor(`document.querySelector('[role="tooltip"]')?.innerText.includes('12-second clips')`);
+ assert.equal(await evaluate(`document.querySelector('[role="tooltip"]').innerText.includes('Policy Observatory') && document.querySelector('[role="tooltip"]').innerText.includes('Save & exit')`), true, 'Privacy and recovery details are preserved');
+ await captureTheme('live-tooltip-mobile');
+ assert.equal(await evaluate(`(() => { const r = document.querySelector('[role="tooltip"]').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; })()`), true, 'Tooltip fits the mobile viewport');
+ await command('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 2, y: 2 }] });
+ await command('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+ await waitFor(`!document.querySelector('[role="tooltip"]')`);
+ await command('Emulation.setTouchEmulationEnabled', { enabled: false });
+ await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+ await assertTheme('light');
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('dark');
+ // A separate pricing page submits JSON, handles server failures, and never claims success early.
+ await click('Back');
+ await waitFor(`document.querySelector('footer a[href="/pricing"]')`);
+ await evaluate(`document.querySelector('footer a[href="/pricing"]').click()`);
+ await waitFor(`document.querySelector('#waitlist-form')`);
+ assert.equal(await evaluate(`location.pathname`), '/pricing');
+ await assertTheme('dark');
+ await command('Page.reload');
+ await waitFor(`document.querySelector('#waitlist-form') && !document.querySelector('button[type="submit"]').disabled`);
+ assert.equal(await evaluate(`document.title`), 'Pricing & launch waitlist — Roundtable');
+ assert.equal(await evaluate(`document.querySelector('#waitlist-first-name').required && document.querySelector('#waitlist-email').required && !document.querySelector('#waitlist-industry').required`), true);
+ await evaluate(`document.querySelector('#waitlist-form').requestSubmit()`);
+ assert.equal(waitlistRequests.length, 0, 'Required fields block empty submissions');
+ const fillWaitlist = async (name, email, industry = '') => evaluate(`(() => { for (const [selector, value] of ${JSON.stringify([['#waitlist-first-name', name], ['#waitlist-email', email], ['#waitlist-industry', industry]])}) { const input = document.querySelector(selector); input.value = value; input.dispatchEvent(new Event(input.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); } })()`);
+ await fillWaitlist('Ana', 'not-an-email');
+ await evaluate(`document.querySelector('#waitlist-form').requestSubmit()`);
+ assert.equal(waitlistRequests.length, 0, 'Email field blocks invalid addresses');
+ await fillWaitlist(' Ana ', 'ANA@example.org', 'legislature');
+ await captureTheme('pricing-dark');
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('light');
+ await captureTheme('pricing-light');
+ await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+ assert.equal(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, 'Pricing form fits mobile');
+ await captureTheme('pricing-mobile');
+ await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+ await evaluate(`document.querySelector('#waitlist-form').requestSubmit()`);
+ for (let i = 0; i < 100 && !releaseWaitlist; i++) await new Promise(resolve => setTimeout(resolve, 20));
+ assert.equal(waitlistRequests.length, 1);
+ assert.deepEqual(waitlistRequests[0], { first_name: 'Ana', email: 'ana@example.org', industry: 'legislature', website: '' });
+ assert.equal(await evaluate(`document.querySelector('#waitlist-form').getAttribute('aria-busy')`), 'true');
+ await evaluate(`document.querySelector('#waitlist-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))`);
+ assert.equal(waitlistRequests.length, 1, 'In-flight signup cannot submit twice');
+ assert.equal(await evaluate(`document.body.innerText.includes('You’re on the list.')`), false, 'No success before server acknowledgement');
+ releaseWaitlist();
+ await waitFor(`document.querySelector('#waitlist-form [role="alert"]')`);
+ assert.equal(await evaluate(`document.querySelector('#waitlist-email').value`), 'ANA@example.org', 'Failed signup retains the form for retry');
+ await evaluate(`document.querySelector('#waitlist-form').requestSubmit()`);
+ await waitFor(`document.body.innerText.includes('You’re on the list.')`);
+ assert.equal(waitlistRequests.length, 2);
+ await command('Page.reload');
+ await waitFor(`document.querySelector('#waitlist-form') && !document.querySelector('button[type="submit"]').disabled`);
+ await fillWaitlist('Sam', 'sam@example.org');
+ await evaluate(`document.querySelector('#waitlist-form').requestSubmit()`);
+ await waitFor(`document.body.innerText.includes('You’re on the list.')`);
+ assert.equal(waitlistRequests[2].industry, null, 'Industry can be omitted');
+ await evaluate(`document.querySelector('footer a[href="/"]').click()`);
+ await waitFor(`document.querySelector('#input-tab-live')`);
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('dark');
+ // Denied storage must not break startup, toggling, or in-app navigation.
+ await command('Page.addScriptToEvaluateOnNewDocument', { source: `Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Blocked', 'SecurityError'); } });` });
+ await command('Page.reload');
+ await waitFor(`document.body.innerText.includes('Share browser tab audio')`);
+ await assertTheme('dark');
+ await evaluate(`${themeSwitch}.click()`);
+ await assertTheme('light');
+ await click('Share browser tab audio');
+ await waitFor(`document.querySelector('#live-audio-source')?.value === 'tab'`);
+ await assertTheme('light');
+ await click('Back');
+ showSavedMeetings = false;
+ await command('Page.reload');
+ await waitFor(`document.querySelector('#new-meeting-heading') && !document.querySelector('#past-meetings-heading')`);
+ assert.equal(await evaluate(`(() => { const r = document.querySelector('[aria-labelledby="new-meeting-heading"]').getBoundingClientRect(); return Math.abs((r.left + r.right) / 2 - document.documentElement.clientWidth / 2) < 2 && r.width <= 672; })()`), true, 'New Meeting is centered and width-limited without past meetings');
  assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
- console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'left-aligned user chat', 'persistent chat reopening and reload', 'multiple isolated chat sessions', 'failed-message retry without duplication', 'delete chat preserves meeting', 'Enter sends and Shift+Enter inserts newline', 'no duplicate or IME sends', 'removed note and query box', 'compact cards without document whitespace', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'hidden pending/failed/empty document sections', 'document lists on cards', 'timestamp/plain-text transcript toggle', 'legacy transcript fallback', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
+ console.log(JSON.stringify({ passed: true, checks: ['centered New Meeting when history is empty', 'full-width header alignment and white workspace fill', 'footer pricing link and direct reload', 'waitlist required fields and optional industry', 'waitlist JSON POST, duplicate-send guard and server-confirmed success', 'waitlist failure recovery and mobile layout', 'compact header and live-first tabs', 'keyboard tab navigation and preserved drafts', 'full-width upload below transcript', 'real file upload, invalid-file recovery and preserved timestamps', 'mobile live actions without scrolling', 'compact guidance tooltips', 'hoverable and keyboard-accessible explanations', 'Escape and outside-tap dismissal', 'mobile tooltip positioning and privacy text preserved', 'system theme default and changes', 'keyboard theme toggle', 'saved theme overrides OS and survives reload', 'cross-tab theme synchronization', 'theme switch visible on mobile and all views', 'canvas colors follow theme', 'blocked storage fallback and in-memory choice', 'organized default', 'clean status badge', 'safe styled chat Markdown', 'left-aligned user chat', 'persistent chat reopening and reload', 'multiple isolated chat sessions', 'failed-message retry without duplication', 'delete chat preserves meeting', 'Enter sends and Shift+Enter inserts newline', 'no duplicate or IME sends', 'removed note and query box', 'compact cards without document whitespace', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'hidden pending/failed/empty document sections', 'document lists on cards', 'timestamp/plain-text transcript toggle', 'legacy transcript fallback', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
 } finally {
  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
  await new Promise((r) => setTimeout(r, 500));
