@@ -13,7 +13,7 @@ This is a source-level comparison, not a claim that every original feature has b
 | Decisions / actions / concerns | Structured arrays with detail sections | Summary strings only | Structured arrays in new analyses; selectable topic details |
 | Per-node change history | Timestamped updates and summary-change indicators | No | **Not yet ported** |
 | Clarifying questions | Separate periodically refreshed panel | No | **Not yet ported** |
-| Per-topic document references | Automatic queries, source links and match indicators | Only document-grounded chat | Background per-card searches with persisted excerpts/source links in both layouts; unmatched/failed lookups remain invisible, without retry prompts; no generated reference answer or confidence score |
+| Per-topic document references | Automatic queries, source links and match indicators | Only document-grounded chat | Background per-card searches with direct document lists in both layouts, persisted excerpts/source links, visible lookup states and explicit failed-search retry; no generated reference answer or confidence score |
 | Transcript auto-follow | Yes | No | Restored; pauses when scrolling up |
 | Speaker labels and partial transcripts | ElevenLabs realtime path provides these; batch Whisper does not | Batch text only | **Still batch text only**; timestamps are not speaker diarization |
 | Microphone / tab audio | Microphone plus Hugging Face tab path | Both sources supported through all STT choices | Retained; one capture grant, audio-only recorder, cleanup on leave |
@@ -61,6 +61,10 @@ Changes:
 - Recognized text appears immediately with visible save status; local recovery and download remain available during outages. Raw audio is not backed up.
 - Failed finalization stays on the transcript/canvas screen with retry controls. Success does not discard the transcript before review.
 - Streaming writes are awaited; error responses no longer include server stack traces.
+
+## Timestamped saved transcripts
+
+Saved meetings now offer **Timestamps** and **Plain text** transcript views. The meeting API returns ordered D1 segments plus the original base transcript, so imported notes are retained without duplication. Segment timestamps are local wall-clock transcription completion times, not exact audio offsets or word timings. Older/imported transcripts without saved segment timing show the original text and an explicit unavailable notice; no timestamps are fabricated. Leaving a completed live meeting preserves its segments for immediate review.
 
 ## Background references
 
