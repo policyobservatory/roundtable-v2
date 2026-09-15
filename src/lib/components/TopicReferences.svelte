@@ -1,31 +1,20 @@
 <script lang="ts">
 	import { BookOpen, ExternalLink } from '@lucide/svelte';
-	import { linkedDocuments, referenceStatusText, safeDocumentUrl, type DocumentReference } from '$shared/document-references';
-	let { reference, compact = false, transportError = '', onRetry }: { reference?: DocumentReference; compact?: boolean; transportError?: string; onRetry?: () => void } = $props();
+	import { linkedDocuments, safeDocumentUrl, type DocumentReference } from '$shared/document-references';
+	let { reference, compact = false }: { reference?: DocumentReference; compact?: boolean } = $props();
 	const documents = $derived(linkedDocuments(reference));
-	let retryRequested = $state('');
-	const retryKey = $derived(reference ? `${reference.id}:${reference.generation}` : '');
 </script>
 
+{#if documents.length}
 <section class={compact ? 'text-[11px]' : 'mt-6 border-t border-zinc-200 pt-4 dark:border-zinc-700'} aria-label="Related policy documents">
 	<h4 class="flex items-center gap-2 font-semibold"><BookOpen class="h-3 w-3 shrink-0" /> Related documents</h4>
-	{#if transportError && (!reference || ['pending', 'queued', 'searching'].includes(reference.status))}
-		<p class="mt-2 text-amber-700 dark:text-amber-400">Document service unavailable; reconnecting…</p>
-		{#if !compact}<p class="mt-1 break-words text-xs text-zinc-500">{transportError}</p>{/if}
-	{:else if !documents.length}
-		<p class="mt-2 text-zinc-500" role="status">{referenceStatusText(reference)}</p>
-		{#if reference?.error && !compact}<p class="mt-1 break-words text-xs text-amber-700 dark:text-amber-400">{reference.error}</p>{/if}
-	{/if}
-	{#if reference?.status === 'error' && onRetry && !compact}
-		<button class="mt-2 text-xs text-blue-600 underline disabled:opacity-50 dark:text-blue-400" disabled={retryRequested === retryKey && !transportError} onclick={() => { retryRequested = retryKey; onRetry?.(); }}>{retryRequested === retryKey && !transportError ? 'Queueing retry…' : 'Retry document search'}</button>
-	{/if}
-	{#if documents.length && compact}
+	{#if compact}
 		<ul class="mt-2 space-y-1.5">
 			{#each documents as document, index (`${document.id}-${index}`)}
 				<li><a class="block truncate text-blue-600 underline dark:text-blue-400" title={document.title} href={safeDocumentUrl(document.source_url) ?? safeDocumentUrl(document.url) ?? safeDocumentUrl(document.bill_url)} target="_blank" rel="noopener noreferrer">{document.title}</a></li>
 			{/each}
 		</ul>
-	{:else if documents.length}
+	{:else}
 		<ul class="mt-3 space-y-4">
 			{#each documents as document, index (`${document.id}-${index}`)}
 				<li class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
@@ -45,3 +34,4 @@
 	{/if}
 	{#if reference && !compact}<p class="mt-2 text-[10px] text-zinc-500">Updated {new Date(reference.updated_at).toLocaleString()}</p>{/if}
 </section>
+{/if}

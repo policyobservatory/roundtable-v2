@@ -13,7 +13,7 @@ This is a source-level comparison, not a claim that every original feature has b
 | Decisions / actions / concerns | Structured arrays with detail sections | Summary strings only | Structured arrays in new analyses; selectable topic details |
 | Per-node change history | Timestamped updates and summary-change indicators | No | **Not yet ported** |
 | Clarifying questions | Separate periodically refreshed panel | No | **Not yet ported** |
-| Per-topic document references | Automatic queries, source links and match indicators | Only document-grounded chat | Background per-card searches with direct document lists in both layouts, persisted excerpts/source links, visible lookup states and explicit failed-search retry; no generated reference answer or confidence score |
+| Per-topic document references | Automatic queries, source links and match indicators | Only document-grounded chat | Background per-card searches with direct document lists in both layouts, persisted excerpts/source links; document sections stay hidden until usable matches are fetched; no generated reference answer or confidence score |
 | Transcript auto-follow | Yes | No | Restored; pauses when scrolling up |
 | Speaker labels and partial transcripts | ElevenLabs realtime path provides these; batch Whisper does not | Batch text only | **Still batch text only**; timestamps are not speaker diarization |
 | Microphone / tab audio | Microphone plus Hugging Face tab path | Both sources supported through all STT choices | Retained; one capture grant, audio-only recorder, cleanup on leave |

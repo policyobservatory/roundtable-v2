@@ -15,7 +15,7 @@ const meeting = { id: '00000000-0000-4000-8000-000000000001', title: 'Browser re
 const docs = [{ id: 'HB-1_s1', title: 'HB-1 · Retention', content: 'Keep records only as necessary.', url: 'https://example.org/provision', source_url: 'https://example.org/original.pdf', bill_status: 'Pending' }];
 const jobs = new Map();
 let submissions = 0;
-let retries = 0;
+let holdReferences = true;
 let includeTimestamps = true;
 const transcriptSegments = [
  { id: 's1', segment_index: 0, text: 'Privacy discussion', created_at: '2026-09-14T09:00:10.000Z' },
@@ -32,7 +32,7 @@ const server = createServer(async (req, res) => {
     submissions++;
     let text = ''; for await (const chunk of req) text += chunk;
     const body = JSON.parse(text); const references = [];
-    if (body.retry) { retries++; assert.deepEqual(body.nodes.map(n => n.id), ['privacy'], 'Only the selected failed card is retried'); }
+    assert.equal(body.retry, false, 'Document failures must not trigger UI retries');
     for (const node of body.nodes) {
      const fp = await referenceFingerprint(node);
      if (!jobs.has(fp)) jobs.set(fp, { id: fp, fingerprint: fp, generation: 0, status: 'queued', documents: [], updated_at: new Date().toISOString(), topic: node.id });
@@ -44,7 +44,7 @@ const server = createServer(async (req, res) => {
    }
    const references = url.searchParams.get('fingerprints').split(',').map((fp) => {
     const job = jobs.get(fp);
-    if (job.status === 'queued') Object.assign(job, job.topic === 'privacy' && job.generation === 0 ? { status: 'error', error: 'Test upstream HTTP 500' } : job.topic === 'general' ? { status: 'empty', documents: [] } : { status: 'ready', documents: docs });
+    if (!holdReferences && job.status === 'queued') Object.assign(job, job.topic === 'privacy' && job.generation === 0 ? { status: 'error', error: 'Test upstream HTTP 500' } : job.topic === 'general' ? { status: 'empty', documents: [] } : { status: 'ready', documents: docs });
     job.updated_at = new Date().toISOString(); return job;
    });
    return json({ references });
@@ -102,18 +102,21 @@ try {
  assert.equal(await evaluate(`!!window.markdownInjected || !!document.querySelector('.markdown script, .markdown a[href^="javascript:"]')`), false);
  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.markdown ul')).listStyleType`), 'disc');
  await click('Hide chat');
+ const assertQuiet = async () => assert.equal(await evaluate(`/Document search|No matching documents|Waiting to queue|Searching Policy Observatory|Document service unavailable|Retry document search|HTTP 500/.test(document.body.innerText)`), false);
+ await assertQuiet();
+ assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Related policy documents"], [data-document-links]').length`), 0, 'Pending searches have no document heading or container');
+ holdReferences = false;
  await waitFor(`document.querySelector('[data-topic-card="budget"] a')`);
  assert.equal(await evaluate(`document.querySelector('[data-topic-card="budget"] a').textContent`), docs[0].title, 'Documents are listed directly on topic cards');
  assert.equal(await evaluate(`document.querySelector('[data-topic-card="budget"] a').getAttribute('href')`), docs[0].source_url);
- assert.equal(await evaluate(`document.querySelector('[data-topic-card="privacy"]').textContent.includes('Document search failed')`), true);
- assert.equal(await evaluate(`document.querySelector('[data-topic-card="general"]').textContent.includes('No matching documents found')`), true);
- assert.equal(await evaluate(`document.querySelectorAll('[data-topic-card="privacy"] a, [data-topic-card="general"] a').length`), 0, 'Failed and empty lookups never fabricate links');
- assert.equal(retries, 0, 'Terminal failures are not automatically retried');
- await evaluate(`document.querySelector('[data-topic-card="privacy"] button').click()`);
- await waitFor(`document.body.innerText.includes('Test upstream HTTP 500')`);
- await click('Retry document search');
- await waitFor(`document.querySelector('[data-topic-card="privacy"] a')`);
- assert.equal(retries, 1, 'An explicit retry requeues the failed job');
+ await assertQuiet();
+ for (const id of ['privacy', 'general']) {
+  assert.equal(await evaluate(`document.querySelectorAll('[data-topic-card="${id}"] [data-document-links]').length`), 0, 'Failed and empty cards have no document section or divider');
+  await evaluate(`document.querySelector('[data-topic-card="${id}"] button').click()`);
+  await waitFor(`document.querySelector('button[title="Close topic details"]')`);
+  assert.equal(await evaluate(`document.querySelectorAll('aside [aria-label="Related policy documents"]').length`), 0, 'Details hide documents when none were fetched');
+  await assertQuiet();
+ }
  await evaluate(`Array.from(document.querySelectorAll('button')).find(b => b.querySelector('h3')?.textContent === 'Budget').click()`);
  await waitFor(`document.body.innerText.includes('Original document')`);
  assert.equal(await evaluate(`Array.from(document.querySelectorAll('a')).find(a => a.textContent.includes('Original document')).getAttribute('rel')`), 'noopener noreferrer');
@@ -180,7 +183,7 @@ try {
  await waitFor(`document.querySelector('#live-audio-source')?.value === 'tab'`);
  assert.equal(await evaluate(`document.querySelector('#live-speech-language').value`), 'fil-en');
  assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
- console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'visible failed/empty states', 'explicit document retry', 'document lists on cards', 'timestamp/plain-text transcript toggle', 'legacy transcript fallback', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
+ console.log(JSON.stringify({ passed: true, checks: ['organized default', 'clean status badge', 'safe styled chat Markdown', 'background and card drag panning', 'wheel and keyboard panning', 'follow toggle recenters existing latest topic', 'topic clicks preserved', 'hidden pending/failed/empty document sections', 'document lists on cards', 'timestamp/plain-text transcript toggle', 'legacy transcript fallback', 'only matched documents linked', 'layout toggle without resubmission', 'downward live layout', 'tab audio selection preserved', 'Taglish preset preserved', 'no browser runtime exceptions'], screenshot: join(tmpdir(), 'roundtable-documents-ui.png') }, null, 2));
 } finally {
  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
  await new Promise((r) => setTimeout(r, 500));

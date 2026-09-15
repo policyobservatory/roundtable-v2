@@ -3,7 +3,7 @@
 	import { untrack } from 'svelte';
 	import type { MeetingMap } from '$shared/types';
 	import { flattenMap } from '$shared/meeting-map';
-	import { referenceRevision, type DocumentReference } from '$shared/document-references';
+	import { linkedDocuments, referenceRevision, type DocumentReference } from '$shared/document-references';
 	import { createDocumentReferences } from '$lib/document-references';
 	import { queueDocumentReferences, pollDocumentReferences } from '$lib/api';
 	import TopicReferences from './TopicReferences.svelte';
@@ -12,18 +12,16 @@
 
 	let { map, meetingId, updating = false, view = $bindable<GraphView>('live'), live = false }: { map: MeetingMap; meetingId?: string; updating?: boolean; view?: GraphView; live?: boolean } = $props();
 	let references = $state<Record<string, DocumentReference>>({});
-	let documentError = $state('');
 	let documentController = $state<ReturnType<typeof createDocumentReferences> | null>(null);
 	$effect(() => {
 		const id = meetingId;
 		references = {};
-		documentError = '';
 		if (!id) { documentController = null; return; }
 		const controller = createDocumentReferences({
 			ensure: (nodes, retry, signal) => queueDocumentReferences(id, nodes, retry, signal),
 			poll: (fingerprints, signal) => pollDocumentReferences(id, fingerprints, signal),
 			onChange: (next) => { references = next; },
-			onError: (message) => { documentError = message; }
+			onError: () => { /* Optional enrichment stays hidden until documents are available. */ }
 		});
 		documentController = controller;
 		return () => controller.dispose();
@@ -190,15 +188,16 @@
 						{/each}
 					</svg>
 					{#each graph.nodes as { node, x: nx, y: ny } (node.id)}
+						{@const hasDocuments = !!meetingId && linkedDocuments(references[referenceRevision(node)]).length > 0}
 						<div data-topic-card={node.id} class="absolute overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-lg dark:bg-zinc-900 {selectedId === node.id ? 'border-blue-500' : 'border-zinc-200 dark:border-zinc-700'}"
 							style:left={`${nx}px`} style:top={`${ny}px`} style:width={`${CARD_WIDTH}px`} style:height={`${graph.cardHeight}px`}>
-							<button class="block w-full cursor-inherit overflow-hidden p-4 text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500" style:height={`${graph.cardHeight - documentSpace}px`} onclick={() => { selectedId = node.id; followLatest = false; }}>
+							<button class="block w-full cursor-inherit overflow-hidden p-4 text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500" style:height={`${graph.cardHeight - (hasDocuments ? documentSpace : 0)}px`} onclick={() => { selectedId = node.id; followLatest = false; }}>
 								<h3 class="line-clamp-2 text-sm font-semibold">{node.title}</h3>
 								<p class="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400 {view === 'organized' ? 'line-clamp-2' : 'line-clamp-3'}">{node.summary}</p>
 								<p class="mt-3 text-[10px] text-blue-600 dark:text-blue-400">{node.decisions?.length ?? 0} decisions · {node.actions?.length ?? 0} actions · {node.concerns?.length ?? 0} concerns</p>
 							</button>
-							{#if meetingId}<div data-document-links class="cursor-auto overflow-y-auto overscroll-contain border-t border-zinc-200 p-3 dark:border-zinc-700" style:height={`${documentSpace}px`}>
-								<TopicReferences reference={references[referenceRevision(node)]} transportError={documentError} compact />
+							{#if hasDocuments}<div data-document-links class="cursor-auto overflow-y-auto overscroll-contain border-t border-zinc-200 p-3 dark:border-zinc-700" style:height={`${documentSpace}px`}>
+								<TopicReferences reference={references[referenceRevision(node)]} compact />
 							</div>{/if}
 						</div>
 					{/each}
@@ -212,7 +211,7 @@
 				{#each [{ title: 'Decisions', items: selected.decisions }, { title: 'Action items', items: selected.actions }, { title: 'Concerns', items: selected.concerns }] as section}
 					{#if section.items?.length}<h4 class="mt-5 text-xs font-semibold">{section.title}</h4><ul class="mt-2 list-disc space-y-2 pl-4 text-xs">{#each section.items as item}<li>{item}</li>{/each}</ul>{/if}
 				{/each}
-				{#if meetingId}<TopicReferences reference={references[referenceRevision(selected)]} transportError={documentError} onRetry={() => { if (selected) documentController?.retry(selected); }} />{/if}
+				{#if meetingId}<TopicReferences reference={references[referenceRevision(selected)]} />{/if}
 			</aside>
 		{/if}
 	</div>
