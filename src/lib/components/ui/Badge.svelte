@@ -19,5 +19,4 @@
 
 <span class={cn('inline-flex items-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium transition-colors', variants[variant], className)}>
 	{@render children()}
-}
 </span>
