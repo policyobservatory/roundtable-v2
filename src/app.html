@@ -4,6 +4,16 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<!-- Apply the saved/system theme before first paint, even before hydration. -->
+		<script>
+			(() => {
+				let preference;
+				try { preference = localStorage.getItem('roundtable-theme'); } catch { /* Storage is optional. */ }
+				const theme = preference === 'light' || preference === 'dark'
+					? preference : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+				document.documentElement.dataset.theme = theme;
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

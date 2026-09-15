@@ -125,16 +125,16 @@
 	}
 </script>
 
-<div class="flex h-full min-h-96 min-w-0 flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
-	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
-		<div class="flex items-center gap-2 text-sm font-medium">
-			Conversation flow <span class="text-xs text-zinc-500">{graph.nodes.length} topics</span>
-			{#if updating}<Loader2 class="h-4 w-4 animate-spin text-blue-500" /><span class="text-xs text-blue-500">Updating...</span>{/if}
+<div class="flex h-full min-h-96 min-w-0 flex-col overflow-hidden bg-background">
+	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2">
+		<div class="flex items-center gap-2 font-serif text-xl">
+			Conversation flow <span class="font-sans text-xs text-muted">{graph.nodes.length} topics</span>
+			{#if updating}<Loader2 class="h-4 w-4 animate-spin text-accent" /><span class="text-xs text-accent">Updating...</span>{/if}
 		</div>
 		<div class="flex flex-wrap items-center gap-1">
-			<div role="group" aria-label="Canvas view" class="mr-2 flex rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-700">
+			<div role="group" aria-label="Canvas view" class="mr-2 flex rounded border border-border p-0.5">
 				{#each [{ value: 'organized', label: 'Organized canvas' }, { value: 'live', label: 'Live graph' }] as option}
-					<button type="button" aria-pressed={view === option.value} class="rounded-md px-2 py-1.5 text-xs {view === option.value ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}" onclick={() => changeView(option.value as GraphView)}>{option.label}</button>
+					<button type="button" aria-pressed={view === option.value} class="rounded px-2 py-1.5 text-xs {view === option.value ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-surface-muted'}" onclick={() => changeView(option.value as GraphView)}>{option.label}</button>
 				{/each}
 			</div>
 			<Button variant="ghost" size="icon" title="Zoom out" onclick={() => zoom(-0.1)}><ZoomOut class="h-4 w-4" /></Button>
@@ -143,7 +143,7 @@
 			<Button variant="ghost" size="icon" title="Fit conversation to view" onclick={fit}><Maximize class="h-4 w-4" /></Button>
 		</div>
 	</div>
-	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-3 py-1.5 text-[11px] text-zinc-500 dark:border-zinc-800">
+	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-1.5 text-[11px] text-muted">
 		<span>{view === 'organized' ? 'Compact top-to-bottom branches · all topics retained' : 'Top-to-bottom topic discovery order'}{!live ? ' · snapshot, not a replay' : ''}. Dashed arrows return to an earlier topic.</span>
 		{#if view === 'live'}<label class="flex items-center gap-1"><input type="checkbox" checked={followLatest} onchange={(event) => {
 			followLatest = event.currentTarget.checked;
@@ -157,7 +157,7 @@
 			bind:this={viewport}
 			role="application" aria-label="Conversation flow canvas. Drag to pan, use arrow keys to move, and plus or minus to zoom." tabindex="0"
 			class="relative min-h-96 min-w-0 flex-1 touch-none select-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-blue-400 {dragging ? 'cursor-grabbing' : 'cursor-grab'}"
-			style="background-image: radial-gradient(#a1a1aa55 1px, transparent 1px); background-size: 22px 22px;"
+			style="background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 22px 22px;"
 			onpointerdown={startPan}
 			onpointermove={movePan}
 			onpointerup={endPan}
@@ -190,27 +190,27 @@
 			}}
 		>
 			{#if !graph.nodes.length}
-				<div class="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-zinc-500">
+				<div class="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-muted">
 					{#if live}Topics and their connections will appear as the conversation develops. Live analysis starts after about 100 characters and updates roughly every 10 seconds when new speech arrives.{:else}No topics are available yet. Analyze a transcript to build the canvas.{/if}
 				</div>
 			{:else}
 				<div class="absolute origin-top-left" style:width={`${graph.width}px`} style:height={`${graph.height}px`} style:transform={`translate(${x}px, ${y}px) scale(${scale})`}>
 					<svg class="pointer-events-none absolute inset-0 overflow-visible" width={graph.width} height={graph.height} aria-hidden="true">
-						<defs><marker id={markerId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#71717a" /></marker></defs>
+						<defs><marker id={markerId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--canvas-edge)" /></marker></defs>
 						{#each graph.edges as edge}
-							<path d={edge.path} stroke="#71717a" stroke-width="1.5" stroke-dasharray={edge.returning ? '6 4' : undefined} stroke-linejoin="round" fill="none" marker-end={`url(#${markerId})`} />
-							{#if edge.label}<text x={edge.x} y={edge.y} text-anchor="middle" class="fill-zinc-600 text-[10px] dark:fill-zinc-300"><title>{edge.label}</title>{edge.label.length > 28 ? edge.label.slice(0, 27) + '…' : edge.label}</text>{/if}
+							<path d={edge.path} stroke="var(--canvas-edge)" stroke-width="1.5" stroke-dasharray={edge.returning ? '6 4' : undefined} stroke-linejoin="round" fill="none" marker-end={`url(#${markerId})`} />
+							{#if edge.label}<text x={edge.x} y={edge.y} text-anchor="middle" class="fill-muted text-[10px]"><title>{edge.label}</title>{edge.label.length > 28 ? edge.label.slice(0, 27) + '…' : edge.label}</text>{/if}
 						{/each}
 					</svg>
 					{#each graph.nodes as { node, x: nx, y: ny, height, documentSpace } (node.id)}
-						<div data-topic-card={node.id} class="absolute overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-lg dark:bg-zinc-900 {selectedId === node.id ? 'border-blue-500' : 'border-zinc-200 dark:border-zinc-700'}"
+						<div data-topic-card={node.id} class="absolute overflow-hidden rounded-md border bg-surface {selectedId === node.id ? 'border-accent ring-1 ring-accent' : 'border-border'}"
 							style:left={`${nx}px`} style:top={`${ny}px`} style:width={`${CARD_WIDTH}px`} style:height={`${height}px`}>
 							<button use:measureTopic={node.id} class="flex w-full cursor-inherit flex-col items-start overflow-hidden p-3 text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500" onclick={() => { selectedId = node.id; followLatest = false; }}>
-								<h3 class="line-clamp-2 text-sm font-semibold">{node.title}</h3>
-								<p class="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400 {view === 'organized' ? 'line-clamp-2' : 'line-clamp-3'}">{node.summary}</p>
-								<p class="mt-2 text-[10px] text-blue-600 dark:text-blue-400">{node.decisions?.length ?? 0} decisions · {node.actions?.length ?? 0} actions · {node.concerns?.length ?? 0} concerns</p>
+								<h3 class="line-clamp-2 font-serif text-xl font-normal leading-tight">{node.title}</h3>
+								<p class="mt-2 text-xs leading-relaxed text-muted {view === 'organized' ? 'line-clamp-2' : 'line-clamp-3'}">{node.summary}</p>
+								<p class="mt-2 text-[10px] font-medium text-accent">{node.decisions?.length ?? 0} decisions · {node.actions?.length ?? 0} actions · {node.concerns?.length ?? 0} concerns</p>
 							</button>
-							{#if documentSpace}<div data-document-links class="cursor-auto overflow-y-auto overscroll-contain border-t border-zinc-200 p-3 dark:border-zinc-700" style:height={`${documentSpace}px`}>
+							{#if documentSpace}<div data-document-links class="cursor-auto overflow-y-auto overscroll-contain border-t border-border bg-surface-muted p-3" style:height={`${documentSpace}px`}>
 								<TopicReferences reference={references[referenceRevision(node)]} compact />
 							</div>{/if}
 						</div>
@@ -219,9 +219,9 @@
 			{/if}
 		</div>
 		{#if selected}
-			<aside class="absolute bottom-0 right-0 top-0 z-10 w-72 max-w-[85%] overflow-auto border-l border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-700 dark:bg-zinc-950">
-				<div class="flex items-start justify-between gap-2"><h3 class="font-semibold">{selected.title}</h3><Button variant="ghost" size="icon" title="Close topic details" onclick={() => selectedId = null}><X class="h-4 w-4" /></Button></div>
-				<p class="mt-3 whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-400">{selected.summary}</p>
+			<aside class="absolute bottom-0 right-0 top-0 z-10 w-72 max-w-[85%] overflow-auto border-l border-border bg-surface p-4 shadow-lg">
+				<div class="flex items-start justify-between gap-2"><h3 class="font-serif text-2xl font-normal leading-tight">{selected.title}</h3><Button variant="ghost" size="icon" title="Close topic details" onclick={() => selectedId = null}><X class="h-4 w-4" /></Button></div>
+				<p class="mt-3 whitespace-pre-wrap text-sm text-muted">{selected.summary}</p>
 				{#each [{ title: 'Decisions', items: selected.decisions }, { title: 'Action items', items: selected.actions }, { title: 'Concerns', items: selected.concerns }] as section}
 					{#if section.items?.length}<h4 class="mt-5 text-xs font-semibold">{section.title}</h4><ul class="mt-2 list-disc space-y-2 pl-4 text-xs">{#each section.items as item}<li>{item}</li>{/each}</ul>{/if}
 				{/each}
@@ -230,8 +230,8 @@
 		{/if}
 	</div>
 	{#if graph.nodes.length}
-		<nav aria-label="Conversation topics" class="flex shrink-0 gap-2 overflow-x-auto border-t border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-950">
-			{#each graph.nodes as { node }}<button class="shrink-0 rounded-md border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800" onclick={() => focusNode(node.id)}>{node.title}</button>{/each}
+		<nav aria-label="Conversation topics" class="flex shrink-0 gap-2 overflow-x-auto border-t border-border bg-surface p-2">
+			{#each graph.nodes as { node }}<button class="shrink-0 rounded border border-border px-2 py-1 text-xs hover:bg-accent-soft hover:text-accent" onclick={() => focusNode(node.id)}>{node.title}</button>{/each}
 		</nav>
 	{/if}
 </div>

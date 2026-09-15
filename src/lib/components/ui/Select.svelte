@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { cn } from '$lib/utils';
+	import type { Snippet } from 'svelte';
 
 	interface Option {
 		value: string;
@@ -9,6 +10,7 @@
 		value?: string;
 		options: Option[];
 		label?: string;
+		help?: Snippet;
 		id?: string;
 		disabled?: boolean;
 		class?: string;
@@ -18,6 +20,7 @@
 		value = $bindable(''),
 		options,
 		label = '',
+		help,
 		id = '',
 		disabled = false,
 		class: className = '',
@@ -32,7 +35,10 @@
 </script>
 
 {#if label}
-	<label for={id} class="mb-1 block text-xs font-medium text-zinc-500">{label}</label>
+	<div class="mb-1 flex items-center gap-1">
+		<label for={id} class="text-xs font-medium text-muted">{label}</label>
+		{@render help?.()}
+	</div>
 {/if}
 <select
 	{id}
@@ -40,7 +46,7 @@
 	value={value}
 	onchange={handle}
 	class={cn(
-		'flex h-8 w-full rounded-md border border-zinc-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-400 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950',
+		'flex h-8 w-full rounded border border-border bg-surface px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50',
 		className
 	)}
 >

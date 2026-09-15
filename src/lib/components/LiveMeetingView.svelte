@@ -11,10 +11,12 @@
 	import SpeechSettings from './SpeechSettings.svelte';
 	import ModelSelect from './ModelSelect.svelte';
 	import FlowCanvas from './FlowCanvas.svelte';
+	import ThemeToggle from './ThemeToggle.svelte';
 	import type { GraphView } from '$lib/graph-layout';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';
 	import Select from './ui/Select.svelte';
+	import InfoTooltip from './ui/InfoTooltip.svelte';
 
 	let { onEnd, sttProvider = $bindable<STTProvider>(DEFAULT_STT_PROVIDER), speechLanguage = $bindable<SpeechLanguage>(DEFAULT_SPEECH_LANGUAGE), audioSource = $bindable<AudioSource>('microphone') }: {
 		onEnd: (meeting: Meeting | null, error?: string, transcript?: string, segments?: TranscriptSegment[]) => void;
@@ -209,8 +211,8 @@
 
 {#if !meetingId}
 	<div class="mx-auto min-h-screen max-w-2xl px-4 py-10">
-		<Button variant="ghost" size="sm" onclick={leave}><ArrowLeft class="h-4 w-4" /> Back</Button>
-		<h1 class="my-6 text-3xl font-semibold">Live meeting</h1>
+		<div class="flex items-center justify-between gap-3"><Button variant="ghost" size="sm" onclick={leave}><ArrowLeft class="h-4 w-4" /> Back</Button><ThemeToggle /></div>
+		<h1 class="my-6 font-serif text-4xl font-normal tracking-tight">Live meeting</h1>
 		{#if recovery}
 			<Card class="mb-4 space-y-3 border-amber-300 p-4">
 				<p class="text-sm">An unfinished transcript was found in this browser ({recovery.segments.length} segments).</p>
@@ -219,30 +221,36 @@
 		{/if}
 		<Card class="space-y-5 p-6">
 			<ModelSelect id="live-ai-model" bind:value={selectedModelId} disabled={starting} />
-			<Select id="live-audio-source" label="Audio source" bind:value={audioSource} options={sourceOptions} disabled={starting} />
-			{#if audioSource === 'tab'}<p class="text-xs leading-relaxed text-zinc-500">Use desktop Chrome or Edge. Choose a browser tab and enable <strong>Share tab audio</strong>. Only audio is uploaded, not video; the microphone is not mixed in. Let participants know before transcribing.</p>{/if}
+			<Select id="live-audio-source" label="Audio source" bind:value={audioSource} options={sourceOptions} disabled={starting}>
+				{#snippet help()}
+					<InfoTooltip label="Live transcription & privacy">
+						<span class="block">Audio is transcribed in approximately {LIVE_AUDIO_CHUNK_MS / 1000}-second clips for more context. Text appears after each clip is processed, not word by word.</span>
+						<span class="mt-2 block">The live transcript and conversation canvas appear side by side while recording. Topic titles and summaries are sent to Policy Observatory for background document searches. A recovery copy of recognized text is kept in this browser until Save & exit.</span>
+					</InfoTooltip>
+				{/snippet}
+			</Select>
+			{#if audioSource === 'tab'}<p class="text-xs leading-relaxed text-muted">Use desktop Chrome or Edge. Choose a browser tab and enable <strong>Share tab audio</strong>. Only audio is uploaded, not video; the microphone is not mixed in. Let participants know before transcribing.</p>{/if}
 			<SpeechSettings idPrefix="live-speech" bind:provider={sttProvider} bind:language={speechLanguage} disabled={starting} />
-			<p class="text-xs text-zinc-500">Audio is transcribed in approximately {LIVE_AUDIO_CHUNK_MS / 1000}-second clips for more context. Text appears after each clip is processed, not word by word.</p>
-			<p class="text-xs text-zinc-500">The live transcript and conversation canvas appear side by side while recording. Topic titles and summaries are sent to Policy Observatory for background document searches. A recovery copy of recognized text is kept in this browser until Save & exit.</p>
 			<Button size="lg" class="w-full" onclick={start} disabled={starting || !!recovery || !!speechLanguageError(sttProvider, speechLanguage)}>
 				{#if starting}<Loader2 class="h-5 w-5 animate-spin" /> Starting...
 				{:else if audioSource === 'tab'}<Monitor class="h-5 w-5" /> Share tab & start
 				{:else}<Mic class="h-5 w-5" /> Start recording{/if}
 			</Button>
-			{#if status}<p role="status" class="text-sm text-zinc-500">{status}</p>{/if}
-			{#if error}<p role="alert" class="text-sm text-red-600">{error}</p>{/if}
+			{#if status}<p role="status" class="text-sm text-muted">{status}</p>{/if}
+			{#if error}<p role="alert" class="text-sm text-red-600 dark:text-red-400">{error}</p>{/if}
 		</Card>
 	</div>
 {:else}
-	<div class="flex h-screen flex-col overflow-hidden bg-white dark:bg-zinc-950">
-		<header class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-2.5 dark:border-zinc-800">
+	<div class="flex h-screen flex-col overflow-hidden bg-surface">
+		<header class="bg-surface flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
 			<div class="flex flex-wrap items-center gap-3 text-xs">
 				<Button variant="ghost" size="sm" onclick={leave}><ArrowLeft class="h-4 w-4" /> Back</Button>
-				<span class={recording ? 'font-semibold text-red-600' : 'text-zinc-500'}>{recording ? '● REC' : finalMeeting ? '✓ Saved' : 'Recording stopped'}</span>
+				<span class={recording ? 'font-semibold text-red-600 dark:text-red-400' : 'text-muted'}>{recording ? '● REC' : finalMeeting ? '✓ Saved' : 'Recording stopped'}</span>
 				<span class="tabular-nums">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
-				<span class="text-zinc-500">{audioSource === 'tab' ? 'Tab audio' : 'Microphone'} · {SPEECH_LANGUAGES.find((option) => option.value === speechLanguage)?.label} · {selectedModel.label}</span>
+				<span class="text-muted">{audioSource === 'tab' ? 'Tab audio' : 'Microphone'} · {SPEECH_LANGUAGES.find((option) => option.value === speechLanguage)?.label} · {selectedModel.label}</span>
 			</div>
-			<div class="flex gap-2">
+			<div class="flex flex-wrap items-center gap-2">
+				<ThemeToggle />
 				<Button variant="outline" size="sm" onclick={download} disabled={!segments.length}><Download class="h-4 w-4" /> Download transcript</Button>
 				{#if finalMeeting}<Button size="sm" onclick={leave}><Check class="h-4 w-4" /> Save & exit</Button>
 				{:else}<Button size="sm" onclick={finish} disabled={finishing || starting || (!recording && !segments.length)}>
@@ -252,19 +260,19 @@
 				</Button>{/if}
 			</div>
 		</header>
-		<div class="shrink-0 border-b border-zinc-200 px-4 py-2 text-xs dark:border-zinc-800">
-			<p role="status" class="text-zinc-500">{status} · {segments.length - unsaved}/{segments.length} segments saved{unsaved ? ` · ${unsaved} pending` : ''}</p>
-			{#if error}<p role="alert" class="mt-1 text-red-600">{error}</p>{/if}
-			{#if storageWarning || audioWarning}<p role="alert" class="mt-1 text-amber-700">{storageWarning} {audioWarning}</p>{/if}
-			{#if previewError}<p class="mt-1 text-amber-700">Live map update failed; transcription continues. {previewError}</p>{/if}
+		<div class="shrink-0 border-b border-border bg-surface-muted px-4 py-2 text-xs">
+			<p role="status" class="text-muted">{status} · {segments.length - unsaved}/{segments.length} segments saved{unsaved ? ` · ${unsaved} pending` : ''}</p>
+			{#if error}<p role="alert" class="mt-1 text-red-600 dark:text-red-400">{error}</p>{/if}
+			{#if storageWarning || audioWarning}<p role="alert" class="mt-1 text-warning">{storageWarning} {audioWarning}</p>{/if}
+			{#if previewError}<p class="mt-1 text-warning">Live map update failed; transcription continues. {previewError}</p>{/if}
 		</div>
 		<div class="flex min-h-0 flex-1 flex-col md:flex-row">
-			<aside class="flex max-h-[35vh] shrink-0 flex-col border-b border-zinc-200 md:max-h-none md:w-[32%] md:min-w-64 md:max-w-sm md:border-b-0 md:border-r dark:border-zinc-800">
-				<div class="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800"><h2 class="text-sm font-medium">Live transcript</h2><button class="text-xs text-blue-600" onclick={() => followTranscript = true}>{followTranscript ? 'Following' : 'Follow latest'}</button></div>
+			<aside class="flex max-h-[35vh] shrink-0 flex-col border-b border-border md:max-h-none md:w-[32%] md:min-w-64 md:max-w-sm md:border-b-0 md:border-r">
+				<div class="flex items-center justify-between border-b border-border px-4 py-3"><h2 class="font-serif text-xl font-normal">Live transcript</h2><button class="text-xs text-accent" onclick={() => followTranscript = true}>{followTranscript ? 'Following' : 'Follow latest'}</button></div>
 				<div bind:this={transcriptPanel} class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4" onscroll={(event) => { const panel = event.currentTarget; followTranscript = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 80; }}>
-					{#if !segments.length}<p class="text-sm italic text-zinc-500">Waiting for speech...</p>{/if}
+					{#if !segments.length}<p class="text-sm italic text-muted">Waiting for speech...</p>{/if}
 					{#each segments as segment (segment.id)}
-						<div><p class="text-[10px] text-zinc-500">{new Date(segment.created_at).toLocaleTimeString()} · <span class={segment.saved ? 'text-emerald-600' : 'text-amber-600'}>{segment.saved ? 'Saved' : 'Pending save'}</span></p><p class="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{segment.text}</p></div>
+						<div><p class="text-[10px] text-muted">{new Date(segment.created_at).toLocaleTimeString()} · <span class={segment.saved ? 'text-accent' : 'text-warning'}>{segment.saved ? 'Saved' : 'Pending save'}</span></p><p class="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{segment.text}</p></div>
 					{/each}
 				</div>
 			</aside>

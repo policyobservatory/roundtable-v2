@@ -184,47 +184,47 @@
 	}
 </script>
 
-<Card class="flex min-h-0 w-96 max-w-full shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
-	<div class="space-y-3 border-b border-zinc-200 p-4 dark:border-zinc-800">
+<Card class="flex min-h-0 w-96 max-w-full shrink-0 flex-col rounded-none border-l border-border">
+	<div class="space-y-3 border-b border-border p-4">
 		<div class="flex items-center justify-between gap-2">
-			<h3 class="font-semibold">Chat with meeting</h3>
+			<h3 class="font-serif text-xl font-normal">Chat with meeting</h3>
 			<div class="flex gap-1">
 				<Button variant="ghost" size="icon" title="New chat" disabled={busy || !ready} onclick={createNew}><Plus class="h-4 w-4" /><span class="sr-only">New chat</span></Button>
 				<Button variant="ghost" size="icon" title="Refresh chat" disabled={loading || sending} onclick={() => { void (error || !ready ? initialize() : refreshCurrent()); }}><RefreshCw class="h-4 w-4" /><span class="sr-only">Refresh chat</span></Button>
 				<Button variant="ghost" size="icon" title="Delete chat" disabled={busy || !selectedId} onclick={removeSession}><Trash2 class="h-4 w-4" /><span class="sr-only">Delete chat</span></Button>
 			</div>
 		</div>
-		<label class="block text-xs text-zinc-500" for="chat-session">Saved chats</label>
-		<select id="chat-session" value={selectedId ?? ''} disabled={loading || sending || !sessions.length} onchange={e => { void openSession(e.currentTarget.value); }} class="h-9 w-full rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-950">
+		<label class="block text-xs text-muted" for="chat-session">Saved chats</label>
+		<select id="chat-session" value={selectedId ?? ''} disabled={loading || sending || !sessions.length} onchange={e => { void openSession(e.currentTarget.value); }} class="h-9 w-full rounded border border-border bg-surface px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
 			{#if !sessions.length}<option value="">New conversation</option>{/if}
 			{#each sessions as session (session.id)}<option value={session.id}>{session.title}</option>{/each}
 		</select>
-		{#if hasMoreSessions}<button class="text-xs text-blue-600" disabled={busy} onclick={moreSessions}>Load more chats</button>{/if}
+		{#if hasMoreSessions}<button class="text-xs text-accent" disabled={busy} onclick={moreSessions}>Load more chats</button>{/if}
 		<ModelSelect id="chat-ai-model" value={selectedModel.id} onchange={id => selectedModelId = id} disabled={busy} />
 	</div>
 	<div bind:this={panel} class="flex-1 space-y-3 overflow-auto p-4">
-		{#if before}<button class="text-xs text-blue-600" disabled={loadingOlder} onclick={loadOlder}>{loadingOlder ? 'Loading…' : 'Load older messages'}</button>{/if}
-		{#if loading}<p class="text-xs text-zinc-500">Loading chats…</p>{:else if !messages.length && !pendingRequest}<p class="text-xs text-zinc-500">Ask about this meeting. Each chat has its own saved history.</p>{/if}
+		{#if before}<button class="text-xs text-accent" disabled={loadingOlder} onclick={loadOlder}>{loadingOlder ? 'Loading…' : 'Load older messages'}</button>{/if}
+		{#if loading}<p class="text-xs text-muted">Loading chats…</p>{:else if !messages.length && !pendingRequest}<p class="text-xs text-muted">Ask about this meeting. Each chat has its own saved history.</p>{/if}
 		{#each messages as msg (msg.id)}
 			<div data-message-role={msg.role} class="mr-6 text-left">
-				<div class={`inline-block max-w-full rounded-lg px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'bg-zinc-100 dark:bg-zinc-800'}`}>
+				<div class={`inline-block max-w-full rounded px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-surface-muted text-foreground'}`}>
 					{#if msg.role === 'assistant'}<Markdown content={msg.content} />{:else}<span class="whitespace-pre-wrap break-words">{msg.content}</span>{/if}
 				</div>
 			</div>
 		{/each}
-		{#if unsavedRequest}<div data-message-role="user" class="mr-6 text-left"><div class="inline-block max-w-full whitespace-pre-wrap break-words rounded-lg bg-zinc-900 px-3 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">{unsavedRequest.content}</div><p class="mt-1 text-[10px] text-zinc-500">{sending ? 'Sending…' : 'Delivery not confirmed'}</p></div>{/if}
-		{#if sending || pending}<div class="flex items-center gap-2 text-sm text-zinc-500"><Loader2 class="h-4 w-4 animate-spin" /> Thinking…</div>{/if}
-		{#if error}<p role="alert" class="text-xs text-red-600">{error}</p>{/if}
-		{#if latestTurn?.status === 'error'}<p class="text-xs text-zinc-500">{latestTurn.error}</p>{/if}
-		{#if retryRequest && !busy}<button class="text-xs text-blue-600 underline" onclick={() => { if (retryRequest) void submit(retryRequest); }}>Retry message</button>{/if}
+		{#if unsavedRequest}<div data-message-role="user" class="mr-6 text-left"><div class="inline-block max-w-full whitespace-pre-wrap break-words rounded bg-primary px-3 py-2 text-sm text-primary-foreground">{unsavedRequest.content}</div><p class="mt-1 text-[10px] text-muted">{sending ? 'Sending…' : 'Delivery not confirmed'}</p></div>{/if}
+		{#if sending || pending}<div class="flex items-center gap-2 text-sm text-muted"><Loader2 class="h-4 w-4 animate-spin" /> Thinking…</div>{/if}
+		{#if error}<p role="alert" class="text-xs text-red-600 dark:text-red-400">{error}</p>{/if}
+		{#if latestTurn?.status === 'error'}<p class="text-xs text-muted">{latestTurn.error}</p>{/if}
+		{#if retryRequest && !busy}<button class="text-xs text-accent underline" onclick={() => { if (retryRequest) void submit(retryRequest); }}>Retry message</button>{/if}
 	</div>
-	<form onsubmit={e => { e.preventDefault(); void submit(); }} class="border-t border-zinc-200 p-3 dark:border-zinc-800">
+	<form onsubmit={e => { e.preventDefault(); void submit(); }} class="border-t border-border p-3">
 		<div class="flex gap-2">
 			<Textarea bind:value={input} placeholder="Ask something..." rows={1} class="min-h-0 flex-1 resize-none" onkeydown={event => {
 				if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); if (!event.repeat) void submit(); }
 			}} />
 			<Button type="submit" disabled={busy || !ready || !input.trim() || input.trim().length > 4000} size="icon" class="shrink-0" title="Send message"><Send class="h-4 w-4" /><span class="sr-only">Send message</span></Button>
 		</div>
-		{#if input.length > 4000}<p class="mt-2 text-xs text-red-600">Messages can contain up to 4,000 characters.</p>{/if}
+		{#if input.length > 4000}<p class="mt-2 text-xs text-red-600 dark:text-red-400">Messages can contain up to 4,000 characters.</p>{/if}
 	</form>
 </Card>

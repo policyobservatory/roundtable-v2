@@ -1,2 +1,66 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
+
+/* Explicit choice overrides the OS theme; the bootstrap supplies the default. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme inline {
+	--font-sans: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+	--font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+	--color-background: var(--background);
+	--color-surface: var(--surface);
+	--color-surface-muted: var(--surface-muted);
+	--color-foreground: var(--foreground);
+	--color-muted: var(--muted);
+	--color-border: var(--border);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-accent: var(--accent);
+	--color-accent-soft: var(--accent-soft);
+	--color-warning: var(--warning);
+}
+
+/* Light colors and font stacks follow policyobservatory.org. */
+:root {
+	color-scheme: light;
+	--background: #f2f4f3;
+	--surface: #ffffff;
+	--surface-muted: #f2f4f3;
+	--foreground: #1c2a2e;
+	--muted: #3c4a4e;
+	--border: #c9d1ce;
+	--primary: #1f5c4a;
+	--primary-foreground: #ffffff;
+	--accent: #1f5c4a;
+	--accent-soft: #d8ebe1;
+	--warning: #805d1f;
+	--canvas-dot: #d6deda;
+	--canvas-edge: #687d74;
+}
+
+/* A dark adaptation of the reference site's charcoal and muted green. */
+:root[data-theme='dark'] {
+	color-scheme: dark;
+	--background: #161e20;
+	--surface: #1c2a2e;
+	--surface-muted: #243237;
+	--foreground: #f2f4f3;
+	--muted: #c9d1ce;
+	--border: #455653;
+	--primary: #a5ceba;
+	--primary-foreground: #172822;
+	--accent: #a5ceba;
+	--accent-soft: #293f35;
+	--warning: #e6c582;
+	--canvas-dot: #2e3e3a;
+	--canvas-edge: #8fb3a4;
+}
+
+@layer base {
+	body {
+		background: var(--background);
+		color: var(--foreground);
+		-webkit-font-smoothing: antialiased;
+	}
+	::selection { background: var(--accent); color: var(--background); }
+}
