@@ -26,6 +26,10 @@ This is a source-level comparison, not a claim that every original feature has b
 | Paste / upload transcripts | Paste | Paste + validated file upload | Retained |
 | Persistent meeting history | API-backed saves | D1 + R2 | Retained with legacy transcript compatibility |
 
+## Persistent meeting chat sessions
+
+See [chat-sessions.md](chat-sessions.md) for the D1-backed multi-chat design, server-loaded history, request deduplication, bounded transcript retrieval, and required `0003_chat_sessions.sql` migration. Session persistence is separate from the live recording session and does not use Durable Objects. Deploy the session API/frontend only after applying the required database migration.
+
 ## Evidence reviewed
 
 Original:
