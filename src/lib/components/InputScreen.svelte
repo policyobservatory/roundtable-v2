@@ -103,9 +103,10 @@
 		<ThemeToggle />
 	</header>
 	<main class="flex flex-1 flex-col">
-		<section aria-labelledby="workspace-heading" class="mx-auto max-w-[1168px] px-6 pb-6 pt-2">
+		<section aria-labelledby="workspace-heading" class="mx-auto w-full max-w-[1168px] px-6 pb-6 pt-2 text-center">
 			<h1 id="workspace-heading" class="font-serif text-2xl font-normal leading-tight tracking-[-0.02em] sm:text-3xl">Meetings, kept in context.</h1>
 			<p class="mt-2 text-sm leading-relaxed text-muted">Record a live discussion or work from an existing transcript.</p>
+			<p class="mt-2 text-xs leading-relaxed text-muted">Built by <a href="https://policyobservatory.org" class="text-accent underline underline-offset-4 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Policy Observatory</a></p>
 		</section>
 
 		<div id="meeting-workspace" class="flex-1 border-t border-border bg-surface">
